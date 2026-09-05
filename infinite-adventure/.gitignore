@@ -1,0 +1,5 @@
+product/node_modules/
+product/.expo/
+*.log
+.DS_Store
+.infinite-adventure-handoff.zip

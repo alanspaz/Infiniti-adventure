@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "Infinite Adventure",
+    "slug": "infinite-adventure",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "platforms": ["ios", "android"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.infiniteadventure.app"
+    },
+    "android": {
+      "package": "com.infiniteadventure.app"
+    }
+  }
+}
