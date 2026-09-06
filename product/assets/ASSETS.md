@@ -47,10 +47,20 @@ Source copies also in `/workspace/ia-art-sprint-b/`.
 
 ## PlayShell header icons (Sprint C) — READY
 
-Path: `product/assets/icons/`
+Drop path: `product/assets/icons/`
 
-Primary 64px: `icon-character.png` · `icon-items.png` · `icon-dice.png` · `icon-combat.png` · `icon-quest.png` · `icon-companions.png` · `icon-map.png` · `icon-settings.png`  
-Also: matching `*-48.png`, `avatar-narrator.png` (+48), aliases (`character.png`, `dm-avatar.png`, …).  
-Gold line-art on transparent. Theme `#140f0c` / `#d4a054`.
+| File | Use |
+|------|-----|
+| `character.png` | Header · Character (64) |
+| `items.png` | Items |
+| `dice.png` | Dice |
+| `combat.png` | Combat / stats |
+| `quest.png` | Quest |
+| `companions.png` | Companions |
+| `map.png` | Map |
+| `settings.png` | Settings |
+| `dm-avatar.png` | Story chat narrator avatar (64) |
+
+Aliases also present as `icon-*.png` / `avatar-narrator.png` (+ `-48` variants). Gold on transparent. Theme `#140f0c` / `#d4a054`.
 
 Sprite reference slices remain under `ui/icons/` for design history.
