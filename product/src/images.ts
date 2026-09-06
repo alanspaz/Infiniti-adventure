@@ -9,15 +9,16 @@ export const appImages = {
   stillLocation: require('../assets/stills/still-stub-location.png') as ImageSourcePropType,
   stillPlayer: require('../assets/stills/still-stub-player.png') as ImageSourcePropType,
   stillItem: require('../assets/stills/still-stub-item.png') as ImageSourcePropType,
-  avatarNarrator: require('../assets/ui/avatar-narrator.png') as ImageSourcePropType,
-  iconCharacter: require('../assets/ui/icons/icon-character.png') as ImageSourcePropType,
-  iconItems: require('../assets/ui/icons/icon-items.png') as ImageSourcePropType,
-  iconDice: require('../assets/ui/icons/icon-dice.png') as ImageSourcePropType,
-  iconCombat: require('../assets/ui/icons/icon-combat.png') as ImageSourcePropType,
-  iconQuest: require('../assets/ui/icons/icon-quest.png') as ImageSourcePropType,
-  iconCompanions: require('../assets/ui/icons/icon-companions.png') as ImageSourcePropType,
-  iconMap: require('../assets/ui/icons/icon-map.png') as ImageSourcePropType,
-  iconSettings: require('../assets/ui/icons/icon-settings.png') as ImageSourcePropType,
+  /** Gold line-art narrator avatar (Sprint C). */
+  avatarNarrator: require('../assets/icons/avatar-narrator.png') as ImageSourcePropType,
+  iconCharacter: require('../assets/icons/icon-character.png') as ImageSourcePropType,
+  iconItems: require('../assets/icons/icon-items.png') as ImageSourcePropType,
+  iconDice: require('../assets/icons/icon-dice.png') as ImageSourcePropType,
+  iconCombat: require('../assets/icons/icon-combat.png') as ImageSourcePropType,
+  iconQuest: require('../assets/icons/icon-quest.png') as ImageSourcePropType,
+  iconCompanions: require('../assets/icons/icon-companions.png') as ImageSourcePropType,
+  iconMap: require('../assets/icons/icon-map.png') as ImageSourcePropType,
+  iconSettings: require('../assets/icons/icon-settings.png') as ImageSourcePropType,
 } as const;
 
 const PANEL_ICONS: Record<string, ImageSourcePropType> = {

@@ -45,12 +45,12 @@ Source copies also in `/workspace/ia-art-sprint-b/`.
 ## Update
 - `splash.png` replaced with softer/cheerful first-open version (Alan). Prior epic version kept as `splash-epic-cliffside.png`.
 
-## PlayShell icons (pending Artist)
+## PlayShell header icons (Sprint C) — READY
 
-Header grid currently uses glyph placeholders in `PlayIconGrid`. Drop PNGs under `assets/icons/` (character, items, dice, combat, quest, companions, map, settings, optional dm-avatar) when ready — Coder will wire `require`s.
+Path: `product/assets/icons/`
 
-## PlayShell UI (Artist)
+Primary 64px: `icon-character.png` · `icon-items.png` · `icon-dice.png` · `icon-combat.png` · `icon-quest.png` · `icon-companions.png` · `icon-map.png` · `icon-settings.png`  
+Also: matching `*-48.png`, `avatar-narrator.png` (+48), aliases (`character.png`, `dm-avatar.png`, …).  
+Gold line-art on transparent. Theme `#140f0c` / `#d4a054`.
 
-See `ui/PLAYSHELL_VISUAL_SPEC.md` and `ui/ASSETS_UI.md`.
-Sliced icons: `ui/icons/icon-*.png` from `playshell-icons-2x4.png`.
-Narrator avatar: `ui/avatar-narrator.png`.
+Sprite reference slices remain under `ui/icons/` for design history.

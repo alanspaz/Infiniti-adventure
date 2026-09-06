@@ -163,10 +163,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#241c16',
   },
   icon: {
-    width: 24,
-    height: 24,
+    width: 28,
+    height: 28,
     marginBottom: 2,
-    opacity: 0.7,
+    opacity: 0.85,
   },
   iconActive: {
     opacity: 1,
