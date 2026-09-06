@@ -36,7 +36,7 @@ type Props = {
 
 /**
  * Base44 layout / IA theme: 2×4 header icon grid + Tale control.
- * Icons from Artist sprite slice (`assets/ui/icons`).
+ * Icons from Artist square 64px set (`assets/icons/*.png`).
  */
 export function PlayIconGrid({ active, onChange, onStory }: Props) {
   return (
