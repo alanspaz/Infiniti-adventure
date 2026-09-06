@@ -12,13 +12,14 @@ import { ProviderKind, Verbosity } from '../settings/types';
 import { theme } from '../theme';
 
 type Props = {
-  onBack: () => void;
+  onBack?: () => void;
+  embedded?: boolean;
 };
 
 const VERBOSITY_OPTIONS: Verbosity[] = ['short', 'standard', 'lush'];
 const PROVIDER_OPTIONS: ProviderKind[] = ['stub', 'remote', 'on-device'];
 
-export function SettingsScreen({ onBack }: Props) {
+export function SettingsScreen({ onBack, embedded = false }: Props) {
   const {
     ready,
     verbosity,
@@ -53,13 +54,15 @@ export function SettingsScreen({ onBack }: Props) {
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
-      <Pressable
-        accessibilityRole="button"
-        onPress={onBack}
-        style={({ pressed }) => [styles.back, pressed && styles.pressed]}
-      >
-        <Text style={styles.backLabel}>Back</Text>
-      </Pressable>
+      {!embedded && onBack ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={onBack}
+          style={({ pressed }) => [styles.back, pressed && styles.pressed]}
+        >
+          <Text style={styles.backLabel}>Back</Text>
+        </Pressable>
+      ) : null}
 
       <Text style={styles.title}>Settings</Text>
       {!ready ? <Text style={styles.hint}>Loading…</Text> : null}

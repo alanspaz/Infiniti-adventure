@@ -93,6 +93,23 @@ describe('narrator provider', () => {
     assert.match(result.prose, /alone/i);
   });
 
+
+  it('stub player prose omits raw turn markers and location ids', async () => {
+    const provider = createNarratorProvider('stub');
+    const result = await provider.narrateScene({
+      beat: 'continue',
+      partyNames: [],
+      locationId: 'emberford-gate',
+      turn: 3,
+      logSummary: 'T1: opening beat | T2: continue beat',
+    });
+    assert.doesNotMatch(result.prose, /T\d+:\s*opening beat/i);
+    assert.doesNotMatch(result.prose, /Recently:/i);
+    assert.doesNotMatch(result.prose, /Place mark:/i);
+    assert.doesNotMatch(result.prose, /Turn\s+3/i);
+    assert.doesNotMatch(result.prose, /emberford-gate/);
+  });
+
   it('remote throws clear not configured without base URL / key', async () => {
     const provider = createNarratorProvider('remote');
     assert.equal(provider.kind, 'remote');

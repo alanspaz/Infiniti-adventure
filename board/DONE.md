@@ -1,5 +1,13 @@
 # Done
 
+## T-016 — Play shell UI polish
+- PlayShell tabs Story Quest Character Companions Items Map Settings
+- Story player-facing only; Map holds location path
+- Stub narrator omits turn markers from prose
+- Home entry Continue to play shell
+- Theme retained; tests green
+
+
 ## T-014 — Remote narrator settings polish
 - Settings: provider kind, API key, base URL, optional model; clear remote incomplete errors
 - Prefs blob persists baseUrl/model; SecureStore for API key (never logged)

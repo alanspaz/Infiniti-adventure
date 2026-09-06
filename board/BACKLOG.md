@@ -2,8 +2,8 @@
 
 ## Next
 - Companion emotion / party UX (only if party features are prioritized)
-- Device Expo playtest (held)
+- Device Expo playtest (re-run after play-shell polish)
 
 ## Notes
-T-014 Remote narrator settings polish is done — base URL + model in prefs; remote HTTP when configured with stub fallback. See board/DONE.md.
-Suggested pause point: core playable offline + optional remote narrator; device Expo playtest can resume later.
+T-016 play shell UI polish addresses Expo Go feedback (no debug Story chrome; Map for location path; tabbed play). See board/DONE.md.
+Suggested pause point: core playable offline + optional remote narrator; device Expo playtest can resume.

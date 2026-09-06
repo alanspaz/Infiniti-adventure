@@ -273,9 +273,13 @@ async function main() {
     'SettingsScreen.tsx',
     'PackSelectScreen.tsx',
     'IdentityScreen.tsx',
+    'PlayShell.tsx',
     'SceneScreen.tsx',
     'MapScreen.tsx',
     'CharacterSheetScreen.tsx',
+    'QuestTab.tsx',
+    'CompanionsTab.tsx',
+    'ItemsTab.tsx',
     'DiceScreen.tsx',
     'StillsScreen.tsx',
   ]) {
@@ -295,18 +299,15 @@ async function main() {
   assert.match(appSrc, /PackSelectScreen/);
   assert.match(appSrc, /IdentityScreen/);
   assert.match(appSrc, /onNewCampaign|pack-select/);
-  assert.match(appSrc, /SceneScreen/);
-  assert.match(appSrc, /MapScreen/);
-  assert.match(appSrc, /CharacterSheetScreen/);
+  assert.match(appSrc, /PlayShell/);
   assert.match(appSrc, /DiceScreen/);
   assert.match(appSrc, /loadActiveCampaign|persistCampaign/);
   assert.match(appSrc, /onContinue|Continue/);
-  assert.match(appSrc, /onNewScene|scene/);
-  assert.match(appSrc, /onOpenSheet|sheet/);
   assert.match(appSrc, /onOpenDice|dice/);
   assert.match(appSrc, /StillsScreen/);
   assert.match(appSrc, /onOpenStills|stills/);
   assert.match(appSrc, /onCampaignChange/);
+  assert.match(appSrc, /setScreen\('play'\)|screen === 'play'/);
 
   const settingsSrc = fs.readFileSync(
     path.join(screensDir, 'SettingsScreen.tsx'),
@@ -323,11 +324,27 @@ async function main() {
   );
   assert.match(sceneSrc, /resolveSceneBeat/);
   assert.match(sceneSrc, /Show me/);
-  assert.match(sceneSrc, /Submit action/);
+  assert.match(sceneSrc, /Submit/);
   assert.match(sceneSrc, /verbosity/);
   assert.match(sceneSrc, /StillFrame/);
   assert.match(sceneSrc, /createAppStillProvider|stills:/);
   assert.match(sceneSrc, /baseUrl/);
+  assert.doesNotMatch(sceneSrc, /Offline adventure loop/);
+  assert.doesNotMatch(sceneSrc, /source=\$\{beat\.narrator\.source\}/);
+  assert.doesNotMatch(sceneSrc, /offline=\$\{/);
+
+  const playShellSrc = fs.readFileSync(
+    path.join(screensDir, 'PlayShell.tsx'),
+    'utf8',
+  );
+  assert.match(playShellSrc, /PlayTabBar/);
+  assert.match(playShellSrc, /Story|quest|companions|items/i);
+  assert.match(playShellSrc, /MapScreen/);
+  assert.match(playShellSrc, /CharacterSheetScreen/);
+  assert.match(playShellSrc, /SettingsScreen/);
+
+  const tabBarPath = path.resolve(__dirname, '../src/components/PlayTabBar.tsx');
+  assert.ok(fs.existsSync(tabBarPath), 'PlayTabBar.tsx missing');
 
   const stillsSrc = fs.readFileSync(
     path.join(screensDir, 'StillsScreen.tsx'),
@@ -356,7 +373,7 @@ async function main() {
   }
 
   console.log(
-    'smoke ok: engine + identity + narrator remote settings + map + stills/cache UI + scene loop + persist + sheet/dice UI' +
+    'smoke ok: engine + identity + narrator + play shell tabs + stills/cache UI + scene loop + persist + sheet/dice UI' +
       (appImported ? ' + App import' : ' + App.tsx verified'),
   );
 }

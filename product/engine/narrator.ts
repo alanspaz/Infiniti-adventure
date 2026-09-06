@@ -171,16 +171,9 @@ function resolveStubProse(request: NarratorSceneRequest): {
     body = CANNED_CUSTOM;
   }
 
+  // Player-facing stub prose only — keep session logSummary / turn / raw
+  // location ids out of the narrative (they remain available to remote prompts).
   const bits = [body, partyClause(request.partyNames)];
-  if (request.locationId) {
-    bits.push(`Place mark: ${request.locationId}.`);
-  }
-  if (request.logSummary?.trim()) {
-    bits.push(`Recently: ${request.logSummary.trim()}`);
-  }
-  if (typeof request.turn === 'number' && request.turn > 0) {
-    bits.push(`Turn ${Math.floor(request.turn)}.`);
-  }
   if (request.checkHint?.trim()) {
     bits.push(request.checkHint.trim());
   }

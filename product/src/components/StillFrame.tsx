@@ -8,6 +8,8 @@ type Props = {
   /** Optional short caption under the frame. */
   caption?: string | null;
   compact?: boolean;
+  /** Hide cache keys / stub chrome for player-facing Story. */
+  playerFacing?: boolean;
 };
 
 const SUBJECT_LABEL: Record<string, string> = {
@@ -23,7 +25,7 @@ const SUBJECT_LABEL: Record<string, string> = {
  * Themed still display: real Image when uri exists, else offline placeholder frame.
  * Colors: background #140f0c / accent #d4a054.
  */
-export function StillFrame({ still, caption = null, compact = false }: Props) {
+export function StillFrame({ still, caption = null, compact = false, playerFacing = false }: Props) {
   const label = SUBJECT_LABEL[still.subjectKind] ?? still.subjectKind;
   const showImage = Boolean(still.uri && !still.placeholder);
 
@@ -33,13 +35,15 @@ export function StillFrame({ still, caption = null, compact = false }: Props) {
       accessibilityRole="image"
       accessibilityLabel={`Still: ${label}. ${still.message}`}
     >
-      <View style={styles.header}>
-        <Text style={styles.kind}>{label}</Text>
-        <Text style={styles.badge}>
-          {still.offline ? 'Offline' : 'Online'}
-          {still.placeholder ? ' · Placeholder' : ''}
-        </Text>
-      </View>
+      {!playerFacing ? (
+        <View style={styles.header}>
+          <Text style={styles.kind}>{label}</Text>
+          <Text style={styles.badge}>
+            {still.offline ? 'Offline' : 'Online'}
+            {still.placeholder ? ' · Placeholder' : ''}
+          </Text>
+        </View>
+      ) : null}
 
       <View style={[styles.frame, compact && styles.frameCompact]}>
         {showImage && still.uri ? (
@@ -55,18 +59,24 @@ export function StillFrame({ still, caption = null, compact = false }: Props) {
               <View style={styles.ornamentInner}>
                 <Text style={styles.glyph}>◈</Text>
                 <Text style={styles.placeholderTitle}>{label}</Text>
-                <Text style={styles.placeholderHint}>No image bytes · stub</Text>
+                <Text style={styles.placeholderHint}>
+                  {playerFacing ? 'A fleeting glimpse' : 'No image bytes · stub'}
+                </Text>
               </View>
             </View>
           </View>
         )}
       </View>
 
-      <Text style={styles.message}>{still.message}</Text>
+      {!playerFacing ? (
+        <Text style={styles.message}>{still.message}</Text>
+      ) : null}
       {caption ? <Text style={styles.caption}>{caption}</Text> : null}
-      <Text style={styles.cacheKey} numberOfLines={2}>
-        {still.cacheKey}
-      </Text>
+      {!playerFacing ? (
+        <Text style={styles.cacheKey} numberOfLines={2}>
+          {still.cacheKey}
+        </Text>
+      ) : null}
     </View>
   );
 }

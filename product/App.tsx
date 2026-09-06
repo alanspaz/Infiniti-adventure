@@ -6,9 +6,7 @@ import { HomeScreen } from './src/screens/HomeScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { PackSelectScreen } from './src/screens/PackSelectScreen';
 import { IdentityScreen } from './src/screens/IdentityScreen';
-import { SceneScreen } from './src/screens/SceneScreen';
-import { MapScreen } from './src/screens/MapScreen';
-import { CharacterSheetScreen } from './src/screens/CharacterSheetScreen';
+import { PlayShell } from './src/screens/PlayShell';
 import { DiceScreen } from './src/screens/DiceScreen';
 import { StillsScreen } from './src/screens/StillsScreen';
 import {
@@ -16,7 +14,7 @@ import {
   persistCampaign,
 } from './src/persist';
 
-type Screen = 'home' | 'settings' | 'pack-select' | 'identity' | 'scene' | 'map' | 'sheet' | 'dice' | 'stills';
+type Screen = 'home' | 'settings' | 'pack-select' | 'identity' | 'play' | 'dice' | 'stills';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
@@ -68,14 +66,10 @@ export default function App() {
           onContinue={
             lastCampaign
               ? () => {
-                  // Resume adventure at Scene play loop.
-                  setScreen('scene');
+                  setScreen('play');
                 }
               : undefined
           }
-          onNewScene={lastCampaign ? () => setScreen('scene') : undefined}
-          onOpenMap={lastCampaign ? () => setScreen('map') : undefined}
-          onOpenSheet={() => setScreen('sheet')}
           onOpenDice={() => setScreen('dice')}
           onOpenStills={() => setScreen('stills')}
         />
@@ -99,33 +93,18 @@ export default function App() {
           onCreated={(campaign) => {
             void commitCampaign(campaign).then(() => {
               setDraftPackId(null);
-              setScreen('home');
+              setScreen('play');
             });
           }}
         />
       ) : null}
-      {screen === 'scene' && lastCampaign ? (
-        <SceneScreen
+      {screen === 'play' && lastCampaign ? (
+        <PlayShell
           campaign={lastCampaign}
-          onBack={() => setScreen('home')}
           onCampaignChange={(next) => {
             void commitCampaign(next);
           }}
-        />
-      ) : null}
-      {screen === 'map' && lastCampaign ? (
-        <MapScreen
-          campaign={lastCampaign}
-          onBack={() => setScreen('home')}
-          onCampaignChange={(next) => {
-            void commitCampaign(next);
-          }}
-        />
-      ) : null}
-      {screen === 'sheet' ? (
-        <CharacterSheetScreen
-          campaign={lastCampaign}
-          onBack={() => setScreen('home')}
+          onLeave={() => setScreen('home')}
         />
       ) : null}
       {screen === 'dice' ? (

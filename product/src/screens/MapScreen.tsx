@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { CampaignSave } from '../../engine';
 import {
   createStarterMap,
@@ -12,19 +12,23 @@ import { theme } from '../theme';
 
 type Props = {
   campaign: CampaignSave;
-  onBack: () => void;
   /** Persist location changes (app shell writes AsyncStorage). */
   onCampaignChange: (campaign: CampaignSave) => void;
+  embedded?: boolean;
+  onBack?: () => void;
 };
 
 /**
- * Thin map / whereAmI screen: on-device path, description, exits.
- * Not a full overworld UI.
+ * Map tab: natural whereAmI, path hierarchy, actionable exits.
  */
-export function MapScreen({ campaign, onBack, onCampaignChange }: Props) {
+export function MapScreen({
+  campaign,
+  onCampaignChange,
+  embedded = false,
+  onBack,
+}: Props) {
   const graph = useMemo(() => createStarterMap(), []);
-  const locationId =
-    campaign.session.locationId ?? graph.startNodeId;
+  const locationId = campaign.session.locationId ?? graph.startNodeId;
 
   let here: WhereAmIResult | null = null;
   let loadError: string | null = null;
@@ -53,42 +57,41 @@ export function MapScreen({ campaign, onBack, onCampaignChange }: Props) {
       contentContainerStyle={styles.root}
       keyboardShouldPersistTaps="handled"
     >
-      <Pressable
-        accessibilityRole="button"
-        onPress={onBack}
-        style={({ pressed }) => [styles.back, pressed && styles.pressed]}
-      >
-        <Text style={styles.backLabel}>Back</Text>
-      </Pressable>
+      {!embedded && onBack ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={onBack}
+          style={({ pressed }) => [styles.back, pressed && styles.pressed]}
+        >
+          <Text style={styles.backLabel}>Back</Text>
+        </Pressable>
+      ) : null}
 
-      <Text style={styles.title}>Where am I</Text>
-      <Text style={styles.hint}>
-        On-device map path and exits. Narrator coloring comes later when online.
-      </Text>
+      <Text style={styles.title}>Map</Text>
 
       {loadError ? (
         <Text style={styles.error}>{loadError}</Text>
       ) : here ? (
         <>
-          <Text style={styles.path}>{here.path}</Text>
-          <Text style={styles.name}>{here.name}</Text>
-          <Text style={styles.kind}>{here.kind}</Text>
-          <Text style={styles.body}>{here.description}</Text>
-          <Text style={styles.line}>{here.line}</Text>
+          <View style={styles.card}>
+            <Text style={styles.pathLabel}>Path</Text>
+            <Text style={styles.path}>{here.path}</Text>
+            <Text style={styles.name}>{here.name}</Text>
+            <Text style={styles.kind}>{here.kind}</Text>
+            <Text style={styles.body}>{here.description}</Text>
+            <Text style={styles.line}>You are at {here.name}.</Text>
+          </View>
 
           <Text style={styles.section}>Exits</Text>
           {here.exits.length === 0 ? (
-            <Text style={styles.muted}>None</Text>
+            <Text style={styles.muted}>No clear exits from here.</Text>
           ) : (
             here.exits.map((ex) => (
               <Pressable
                 key={ex.id}
                 accessibilityRole="button"
                 onPress={() => go(ex.id)}
-                style={({ pressed }) => [
-                  styles.exit,
-                  pressed && styles.pressed,
-                ]}
+                style={({ pressed }) => [styles.exit, pressed && styles.pressed]}
               >
                 <Text style={styles.exitLabel}>{ex.label}</Text>
                 <Text style={styles.exitMeta}>→ {ex.toName}</Text>
@@ -123,20 +126,30 @@ const styles = StyleSheet.create({
   },
   title: {
     color: theme.colors.accent,
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '700',
-    marginBottom: theme.spacing.sm,
-  },
-  hint: {
-    color: theme.colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
     marginBottom: theme.spacing.md,
+  },
+  card: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 12,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
+  },
+  pathLabel: {
+    color: theme.colors.accent,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 4,
   },
   path: {
     color: theme.colors.textMuted,
     fontSize: 13,
-    marginBottom: theme.spacing.xs,
+    marginBottom: theme.spacing.sm,
   },
   name: {
     color: theme.colors.text,
@@ -159,8 +172,7 @@ const styles = StyleSheet.create({
   line: {
     color: theme.colors.textMuted,
     fontSize: 13,
-    lineHeight: 18,
-    marginBottom: theme.spacing.lg,
+    fontStyle: 'italic',
   },
   section: {
     color: theme.colors.accent,
@@ -175,7 +187,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface,
-    borderRadius: 8,
+    borderRadius: 10,
     padding: theme.spacing.md,
     marginBottom: theme.spacing.sm,
   },

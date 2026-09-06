@@ -7,7 +7,9 @@ import { theme } from '../theme';
 type Props = {
   /** Active campaign; null → empty-state. */
   campaign: CampaignSave | null;
-  onBack: () => void;
+  onBack?: () => void;
+  /** Hide back chrome when inside PlayShell. */
+  embedded?: boolean;
 };
 
 const ABILITY_LABELS: Record<AbilityKey, string> = {
@@ -27,7 +29,7 @@ function formatMod(n: number): string {
  * Character sheet: active campaign PC identity + derived stats from engine.
  * Empty-state when no campaign or empty party (empty party is valid).
  */
-export function CharacterSheetScreen({ campaign, onBack }: Props) {
+export function CharacterSheetScreen({ campaign, onBack, embedded = false }: Props) {
   const pc: CharacterSheet | null =
     campaign && campaign.party.length > 0 ? campaign.party[0]! : null;
 
@@ -42,19 +44,22 @@ export function CharacterSheetScreen({ campaign, onBack }: Props) {
       contentContainerStyle={styles.root}
       keyboardShouldPersistTaps="handled"
     >
-      <Pressable
-        accessibilityRole="button"
-        onPress={onBack}
-        style={({ pressed }) => [styles.back, pressed && styles.pressed]}
-      >
-        <Text style={styles.backLabel}>Back</Text>
-      </Pressable>
+      {!embedded && onBack ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={onBack}
+          style={({ pressed }) => [styles.back, pressed && styles.pressed]}
+        >
+          <Text style={styles.backLabel}>Back</Text>
+        </Pressable>
+      ) : null}
 
-      <Text style={styles.title}>Character sheet</Text>
-      <Text style={styles.hint}>
-        Identity and derived stats from the on-device engine. Companions are never
-        added for you.
-      </Text>
+      <Text style={styles.title}>Character</Text>
+      {!embedded ? (
+        <Text style={styles.hint}>
+          Identity and derived stats. Companions are never added for you.
+        </Text>
+      ) : null}
 
       {!campaign ? (
         <View style={styles.card}>

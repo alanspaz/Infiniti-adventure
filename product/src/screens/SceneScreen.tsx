@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -23,28 +23,51 @@ import { theme } from '../theme';
 
 type Props = {
   campaign: CampaignSave;
-  onBack: () => void;
   /** Persist after each beat (app shell → AsyncStorage). */
   onCampaignChange: (campaign: CampaignSave) => void;
+  /** When true, hide stand-alone chrome (used inside PlayShell). */
+  embedded?: boolean;
+  /** Stand-alone back (ignored when embedded). */
+  onBack?: () => void;
 };
 
+type StoryBeat = {
+  id: string;
+  prose: string;
+  checkLine: string | null;
+  placeName: string | null;
+  still: StillResult | null;
+};
+
+/** Strip leftover engine/debug crumbs if any older saves/providers leak them. */
+function playerFacingProse(raw: string): string {
+  return raw
+    .replace(/\s*Recently:\s*[^\n]*/gi, '')
+    .replace(/\s*Place mark:\s*[^\n.]+\.?/gi, '')
+    .replace(/\s*Turn\s+\d+\.?/gi, '')
+    .replace(/\bsource\s*=\s*\w+/gi, '')
+    .replace(/\boffline\s*=\s*(yes|no)/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 /**
- * Full scene / adventure play loop (v1):
- * narrator beat → player action → optional check → travel → optional still → save.
- * Stub works offline; remote is optional and falls back to stub.
- * Show-me stills use cached stub placeholders (device PersistStore).
+ * Story tab — player-facing narration + action input.
+ * No shell/debug meta; location breadcrumb lives on Map.
  */
-export function SceneScreen({ campaign, onBack, onCampaignChange }: Props) {
+export function SceneScreen({
+  campaign,
+  onCampaignChange,
+  embedded = false,
+  onBack,
+}: Props) {
   const { verbosity, providerKind, apiKey, baseUrl, model } = useSettings();
   const map = useMemo(() => createStarterMap(), []);
   const stillProvider = useMemo(() => createAppStillProvider(), []);
+  const logRef = useRef<ScrollView>(null);
 
-  const [prose, setProse] = useState<string | null>(null);
-  const [meta, setMeta] = useState<string | null>(null);
-  const [checkLine, setCheckLine] = useState<string | null>(null);
-  const [whereLine, setWhereLine] = useState<string | null>(null);
-  const [still, setStill] = useState<StillResult | null>(null);
-  const [fallbackNote, setFallbackNote] = useState<string | null>(null);
+  const [beats, setBeats] = useState<StoryBeat[]>([]);
+  const [placeName, setPlaceName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [action, setAction] = useState('');
@@ -60,18 +83,26 @@ export function SceneScreen({ campaign, onBack, onCampaignChange }: Props) {
   }, [providerKind, apiKey, baseUrl, model]);
 
   const applyBeat = useCallback(
-    (beat: SceneBeatResult, note: string | null) => {
-      setProse(beat.prose);
-      setCheckLine(beat.check?.line ?? null);
-      setWhereLine(beat.where ? beat.where.line : null);
-      setStill(beat.still);
-      setFallbackNote(note);
-      setMeta(
-        `source=${beat.narrator.source} · offline=${beat.narrator.offline ? 'yes' : 'no'} · turn=${beat.campaign.session.turn} · settings=${providerKind}`,
-      );
+    (beat: SceneBeatResult) => {
+      const prose = playerFacingProse(beat.prose);
+      const place = beat.where?.name ?? null;
+      setPlaceName(place);
+      setBeats((prev) => [
+        ...prev,
+        {
+          id: `${beat.campaign.session.turn}-${prev.length}-${Date.now()}`,
+          prose,
+          checkLine: beat.check?.line ?? null,
+          placeName: place,
+          still: beat.still,
+        },
+      ]);
       onCampaignChange(beat.campaign);
+      requestAnimationFrame(() => {
+        logRef.current?.scrollToEnd({ animated: true });
+      });
     },
-    [onCampaignChange, providerKind],
+    [onCampaignChange],
   );
 
   const runBeat = useCallback(
@@ -84,9 +115,8 @@ export function SceneScreen({ campaign, onBack, onCampaignChange }: Props) {
       setBusy(true);
       setError(null);
       try {
-        const { provider, fallbackNote: note } = playNarrator();
+        const { provider, fallbackNote: _note } = playNarrator();
         let narrator = provider;
-        let usedNote = note;
 
         const seed =
           campaign.session.rngSeed ??
@@ -107,10 +137,7 @@ export function SceneScreen({ campaign, onBack, onCampaignChange }: Props) {
             rng: createSeededRng(seed + campaign.session.turn),
           });
         } catch (err) {
-          // Remote/on-device failure → offline stub (never block play)
           if (provider.kind !== 'stub') {
-            const msg = err instanceof Error ? err.message : String(err);
-            usedNote = `Provider failed (${msg}) — using offline stub`;
             narrator = createPlayNarrator({
               providerKind: 'stub',
             }).provider;
@@ -131,7 +158,7 @@ export function SceneScreen({ campaign, onBack, onCampaignChange }: Props) {
           }
         }
 
-        applyBeat(result, usedNote);
+        applyBeat(result);
         setStarted(true);
         if (opts.playerAction) setAction('');
       } catch (err) {
@@ -143,7 +170,6 @@ export function SceneScreen({ campaign, onBack, onCampaignChange }: Props) {
     [campaign, verbosity, map, playNarrator, applyBeat, stillProvider],
   );
 
-  // Auto-load opening/continue when entering the screen once.
   useEffect(() => {
     if (started || busy) return;
     const beat =
@@ -171,197 +197,194 @@ export function SceneScreen({ campaign, onBack, onCampaignChange }: Props) {
   };
 
   return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.root}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Pressable
-        accessibilityRole="button"
-        onPress={onBack}
-        style={({ pressed }) => [styles.back, pressed && styles.pressed]}
+    <View style={styles.flex}>
+      <ScrollView
+        ref={logRef}
+        style={styles.scroll}
+        contentContainerStyle={styles.root}
+        keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.backLabel}>Back</Text>
-      </Pressable>
+        {!embedded && onBack ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={onBack}
+            style={({ pressed }) => [styles.back, pressed && styles.pressed]}
+          >
+            <Text style={styles.backLabel}>Back</Text>
+          </Pressable>
+        ) : null}
 
-      <Text style={styles.title}>Scene</Text>
-      <Text style={styles.hint}>
-        Offline adventure loop for “{campaign.title}”. Stub narrator always
-        works; remote is optional when configured. Show me uses cached
-        placeholders on device. Empty party is valid.
-      </Text>
-
-      {whereLine ? <Text style={styles.where}>{whereLine}</Text> : null}
-      {fallbackNote ? <Text style={styles.note}>{fallbackNote}</Text> : null}
-      {meta ? <Text style={styles.meta}>{meta}</Text> : null}
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      {prose ? (
-        <View style={styles.card}>
-          <Text style={styles.prose}>{prose}</Text>
+        <View style={styles.storyHeader}>
+          <Text style={styles.storyTitle}>Story</Text>
+          {placeName ? (
+            <Text style={styles.placeLine}>You are at {placeName}</Text>
+          ) : null}
         </View>
-      ) : (
-        <Text style={styles.meta}>{busy ? 'Loading beat…' : 'No beat yet.'}</Text>
-      )}
 
-      {checkLine ? (
-        <View style={styles.checkCard}>
-          <Text style={styles.checkLabel}>Check</Text>
-          <Text style={styles.checkLine}>{checkLine}</Text>
-        </View>
-      ) : null}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      {still ? (
-        <StillFrame
-          still={still}
-          caption="Show me — survives reload via device cache"
+        {beats.length === 0 ? (
+          <View style={styles.loadingCard}>
+            <Text style={styles.loadingText}>
+              {busy ? 'The tale begins…' : 'Waiting for the next beat.'}
+            </Text>
+          </View>
+        ) : (
+          beats.map((b) => (
+            <View key={b.id} style={styles.beatCard}>
+              <Text style={styles.prose}>{b.prose}</Text>
+              {b.checkLine ? (
+                <View style={styles.checkCard}>
+                  <Text style={styles.checkLabel}>Check</Text>
+                  <Text style={styles.checkLine}>{b.checkLine}</Text>
+                </View>
+              ) : null}
+              {b.still ? (
+                <StillFrame still={b.still} playerFacing caption="A vision" />
+              ) : null}
+            </View>
+          ))
+        )}
+
+        <Text style={styles.section}>What do you do?</Text>
+        <TextInput
+          value={action}
+          onChangeText={setAction}
+          placeholder="Speak, look, move, or act…"
+          placeholderTextColor={theme.colors.textMuted}
+          style={styles.input}
+          editable={!busy}
+          multiline
+          accessibilityLabel="Player action"
         />
-      ) : null}
-
-      <Text style={styles.section}>Your action</Text>
-      <TextInput
-        value={action}
-        onChangeText={setAction}
-        placeholder="What do you do?"
-        placeholderTextColor={theme.colors.textMuted}
-        style={styles.input}
-        editable={!busy}
-        multiline
-        accessibilityLabel="Player action"
-      />
-
-      <Pressable
-        accessibilityRole="button"
-        onPress={submitAction}
-        disabled={busy || !action.trim()}
-        style={({ pressed }) => [
-          styles.primary,
-          pressed && styles.pressed,
-          (busy || !action.trim()) && styles.disabled,
-        ]}
-      >
-        <Text style={styles.primaryLabel}>
-          {busy ? 'Resolving…' : 'Submit action'}
-        </Text>
-      </Pressable>
-
-      <View style={styles.row}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => {
-            void runBeat({
-              beat: campaign.session.turn > 0 ? 'continue' : 'opening',
-            });
-          }}
-          disabled={busy}
-          style={({ pressed }) => [
-            styles.secondary,
-            pressed && styles.pressed,
-            busy && styles.disabled,
-          ]}
-        >
-          <Text style={styles.secondaryLabel}>New beat</Text>
-        </Pressable>
 
         <Pressable
           accessibilityRole="button"
-          onPress={showMe}
-          disabled={busy}
+          onPress={submitAction}
+          disabled={busy || !action.trim()}
           style={({ pressed }) => [
-            styles.secondary,
+            styles.primary,
             pressed && styles.pressed,
-            busy && styles.disabled,
+            (busy || !action.trim()) && styles.disabled,
           ]}
         >
-          <Text style={styles.secondaryLabel}>Show me</Text>
+          <Text style={styles.primaryLabel}>
+            {busy ? 'Resolving…' : 'Submit'}
+          </Text>
         </Pressable>
-      </View>
 
-      <Text style={styles.footer}>
-        Party:{' '}
-        {campaign.party.length === 0
-          ? 'empty (solo)'
-          : campaign.party.map((c) => c.name).join(', ')}{' '}
-        · Verbosity: {verbosity}
-      </Text>
-    </ScrollView>
+        <View style={styles.row}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              void runBeat({
+                beat: campaign.session.turn > 0 ? 'continue' : 'opening',
+              });
+            }}
+            disabled={busy}
+            style={({ pressed }) => [
+              styles.secondary,
+              pressed && styles.pressed,
+              busy && styles.disabled,
+            ]}
+          >
+            <Text style={styles.secondaryLabel}>New beat</Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={showMe}
+            disabled={busy}
+            style={({ pressed }) => [
+              styles.secondary,
+              pressed && styles.pressed,
+              busy && styles.disabled,
+            ]}
+          >
+            <Text style={styles.secondaryLabel}>Show me</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   scroll: {
     flex: 1,
     backgroundColor: theme.colors.background,
   },
   root: {
-    padding: theme.spacing.lg,
+    padding: theme.spacing.md,
     paddingBottom: theme.spacing.xl,
   },
   back: {
     alignSelf: 'flex-start',
-    marginBottom: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
     paddingVertical: theme.spacing.xs,
   },
   backLabel: {
     color: theme.colors.accent,
     fontSize: 16,
   },
-  title: {
-    color: theme.colors.accent,
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: theme.spacing.sm,
-  },
-  hint: {
-    color: theme.colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
+  storyHeader: {
     marginBottom: theme.spacing.md,
   },
-  where: {
-    color: theme.colors.text,
-    fontSize: 14,
-    marginBottom: theme.spacing.sm,
-  },
-  note: {
+  storyTitle: {
     color: theme.colors.accent,
-    fontSize: 12,
-    marginBottom: theme.spacing.xs,
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 4,
   },
-  meta: {
+  placeLine: {
     color: theme.colors.textMuted,
-    fontSize: 12,
-    marginBottom: theme.spacing.sm,
+    fontSize: 14,
+    fontStyle: 'italic',
   },
   error: {
     color: theme.colors.danger,
     marginBottom: theme.spacing.sm,
   },
-  card: {
+  loadingCard: {
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface,
-    borderRadius: 10,
+    borderRadius: 12,
+    padding: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
+  },
+  loadingText: {
+    color: theme.colors.textMuted,
+    fontSize: 15,
+    fontStyle: 'italic',
+  },
+  beatCard: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 12,
     padding: theme.spacing.md,
     marginBottom: theme.spacing.md,
   },
   prose: {
     color: theme.colors.text,
     fontSize: 16,
-    lineHeight: 24,
+    lineHeight: 25,
   },
   checkCard: {
     borderWidth: 1,
     borderColor: theme.colors.accent,
     borderRadius: 10,
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.md,
+    padding: theme.spacing.sm,
+    marginTop: theme.spacing.md,
   },
   checkLabel: {
     color: theme.colors.accent,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
+    letterSpacing: 0.6,
     marginBottom: 4,
   },
   checkLine: {
@@ -372,14 +395,15 @@ const styles = StyleSheet.create({
   section: {
     color: theme.colors.accent,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     marginBottom: theme.spacing.sm,
+    marginTop: theme.spacing.xs,
   },
   input: {
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface,
-    borderRadius: 10,
+    borderRadius: 12,
     color: theme.colors.text,
     padding: theme.spacing.md,
     minHeight: 72,
@@ -388,7 +412,7 @@ const styles = StyleSheet.create({
   },
   primary: {
     backgroundColor: theme.colors.accent,
-    borderRadius: 10,
+    borderRadius: 12,
     paddingVertical: theme.spacing.md,
     paddingHorizontal: theme.spacing.lg,
     alignItems: 'center',
@@ -408,7 +432,7 @@ const styles = StyleSheet.create({
   secondary: {
     borderWidth: 1,
     borderColor: theme.colors.accent,
-    borderRadius: 8,
+    borderRadius: 10,
     paddingVertical: theme.spacing.sm,
     paddingHorizontal: theme.spacing.md,
   },
@@ -419,9 +443,4 @@ const styles = StyleSheet.create({
   },
   disabled: { opacity: 0.55 },
   pressed: { opacity: 0.85 },
-  footer: {
-    color: theme.colors.textMuted,
-    fontSize: 12,
-    marginTop: theme.spacing.sm,
-  },
 });

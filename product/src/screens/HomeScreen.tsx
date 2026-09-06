@@ -6,17 +6,11 @@ import { theme } from '../theme';
 type Props = {
   onOpenSettings: () => void;
   onNewCampaign: () => void;
-  /** Resume active campaign at Scene adventure loop. */
+  /** Resume active campaign in the play shell. */
   onContinue?: () => void;
-  /** Open Scene play (new / refresh beat). */
-  onNewScene?: () => void;
-  /** Thin whereAmI / map exits when a campaign exists. */
-  onOpenMap?: () => void;
-  /** Character sheet (empty-state OK without campaign). */
-  onOpenSheet: () => void;
-  /** Dice / ability checks (NdM always; checks need PC). */
+  /** Dice tool (optional; also reachable later from play). */
   onOpenDice: () => void;
-  /** Stills gallery / cache (offline placeholders). */
+  /** Stills gallery. */
   onOpenStills: () => void;
   lastCampaign?: CampaignSave | null;
   /** Best-effort persist status (saved / restored / memory-only). */
@@ -27,9 +21,6 @@ export function HomeScreen({
   onOpenSettings,
   onNewCampaign,
   onContinue,
-  onNewScene,
-  onOpenMap,
-  onOpenSheet,
   onOpenDice,
   onOpenStills,
   lastCampaign = null,
@@ -39,12 +30,12 @@ export function HomeScreen({
     <View style={styles.root}>
       <Text style={styles.title}>Infinite Adventure</Text>
       <Text style={styles.subtitle}>
-        You travel alone unless you form a party. Companions are never added for
-        you.
+        A solo phone RPG. You travel alone unless you form a party — companions
+        are never added for you.
       </Text>
       <Text style={styles.placeholder}>
-        Start a new campaign: choose a playstyle pack, then set your identity.
-        Campaigns save on-device so you can continue after reload.
+        Start a campaign, then play in Story. Map, Character, Quests, and more
+        live in the adventure tabs.
       </Text>
 
       {lastCampaign ? (
@@ -54,23 +45,12 @@ export function HomeScreen({
           </Text>
           <Text style={styles.bannerTitle}>{lastCampaign.title}</Text>
           <Text style={styles.bannerMeta}>
-            Pack: {lastCampaign.playstylePackId ?? 'none'} · Party:{' '}
             {lastCampaign.party.length === 0
-              ? 'empty'
+              ? 'Traveling alone'
               : lastCampaign.party
                   .map((c) => `${c.name} (${c.className})`)
                   .join(', ')}
           </Text>
-          {lastCampaign.session.locationId ? (
-            <Text style={styles.bannerMeta}>
-              Location: {lastCampaign.session.locationId}
-            </Text>
-          ) : null}
-          {lastCampaign.session.turn > 0 ? (
-            <Text style={styles.bannerMeta}>
-              Turn: {lastCampaign.session.turn}
-            </Text>
-          ) : null}
         </View>
       ) : null}
 
@@ -102,46 +82,6 @@ export function HomeScreen({
         >
           New campaign
         </Text>
-      </Pressable>
-
-      {lastCampaign && onNewScene ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={onNewScene}
-          style={({ pressed }) => [
-            styles.button,
-            styles.buttonSpaced,
-            pressed && styles.buttonPressed,
-          ]}
-        >
-          <Text style={styles.buttonLabel}>New scene</Text>
-        </Pressable>
-      ) : null}
-
-      {lastCampaign && onOpenMap ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={onOpenMap}
-          style={({ pressed }) => [
-            styles.button,
-            styles.buttonSpaced,
-            pressed && styles.buttonPressed,
-          ]}
-        >
-          <Text style={styles.buttonLabel}>Where am I (map)</Text>
-        </Pressable>
-      ) : null}
-
-      <Pressable
-        accessibilityRole="button"
-        onPress={onOpenSheet}
-        style={({ pressed }) => [
-          styles.button,
-          styles.buttonSpaced,
-          pressed && styles.buttonPressed,
-        ]}
-      >
-        <Text style={styles.buttonLabel}>Character sheet</Text>
       </Pressable>
 
       <Pressable
@@ -212,7 +152,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface,
-    borderRadius: 10,
+    borderRadius: 12,
     padding: theme.spacing.md,
     marginBottom: theme.spacing.lg,
   },
@@ -238,7 +178,7 @@ const styles = StyleSheet.create({
   primary: {
     alignSelf: 'flex-start',
     backgroundColor: theme.colors.accent,
-    borderRadius: 8,
+    borderRadius: 10,
     paddingVertical: theme.spacing.sm,
     paddingHorizontal: theme.spacing.md,
     marginBottom: theme.spacing.sm,
@@ -253,7 +193,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
     borderColor: theme.colors.accent,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 10,
     paddingVertical: theme.spacing.sm,
     paddingHorizontal: theme.spacing.md,
   },
