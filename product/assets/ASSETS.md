@@ -44,3 +44,7 @@ Source copies also in `/workspace/ia-art-sprint-b/`.
 
 ## Update
 - `splash.png` replaced with softer/cheerful first-open version (Alan). Prior epic version kept as `splash-epic-cliffside.png`.
+
+## PlayShell icons (pending Artist)
+
+Header grid currently uses glyph placeholders in `PlayIconGrid`. Drop PNGs under `assets/icons/` (character, items, dice, combat, quest, companions, map, settings, optional dm-avatar) when ready — Coder will wire `require`s.

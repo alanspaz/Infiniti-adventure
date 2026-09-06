@@ -134,6 +134,7 @@ describe('MemoryPersistStore save/load', () => {
             checkLine: null,
             stillCacheKey: null,
             placeLine: 'At The Copper Kettle. Warm lamps glow.',
+            playerLine: null,
           },
         ],
       },

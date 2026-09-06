@@ -25,12 +25,11 @@ import { theme } from '../theme';
 
 type Props = {
   campaign: CampaignSave;
-  /** Persist after each beat (app shell → AsyncStorage). */
   onCampaignChange: (campaign: CampaignSave) => void;
-  /** When true, hide stand-alone chrome (used inside PlayShell). */
   embedded?: boolean;
-  /** Stand-alone back (ignored when embedded). */
   onBack?: () => void;
+  /** Optional: open Stills gallery from Story (preserves T-019 access). */
+  onOpenStills?: () => void;
 };
 
 type StoryBeat = {
@@ -39,11 +38,11 @@ type StoryBeat = {
   checkLine: string | null;
   still: StillResult | null;
   placeLine: string | null;
+  playerLine: string | null;
 };
 
 const MAX_STORY_BEATS = 40;
 
-/** First sentence only, trimmed — never path separators. */
 function firstSentence(text: string): string {
   const trimmed = text.replace(/\s+/g, ' ').trim();
   if (!trimmed) return '';
@@ -51,7 +50,6 @@ function firstSentence(text: string): string {
   return sentence.trim();
 }
 
-/** Natural Story place line from whereAmI — never Map path / kind. */
 function naturalPlaceLine(
   where: { name: string; description?: string } | null | undefined,
 ): string | null {
@@ -62,7 +60,6 @@ function naturalPlaceLine(
   return `At ${name}.`;
 }
 
-/** Strip leftover engine/debug crumbs if any older saves/providers leak them. */
 function playerFacingProse(raw: string): string {
   return raw
     .replace(/\s*Recently:\s*[^\n]*/gi, '')
@@ -84,6 +81,7 @@ function recordsToBeats(records: StoryBeatRecord[]): StoryBeat[] {
     checkLine: r.checkLine,
     still: null,
     placeLine: r.placeLine ?? null,
+    playerLine: r.playerLine ?? null,
   }));
 }
 
@@ -98,6 +96,7 @@ function hydrateFromLogSummary(logSummary: string): StoryBeat[] {
       checkLine: null,
       still: null,
       placeLine: null,
+      playerLine: null,
     }))
     .filter((b) => b.prose.length > 0);
 }
@@ -109,6 +108,7 @@ function toRecord(beat: StoryBeat): StoryBeatRecord {
     checkLine: beat.checkLine,
     stillCacheKey: beat.still?.cacheKey ?? null,
     placeLine: beat.placeLine,
+    playerLine: beat.playerLine,
   };
 }
 
@@ -118,14 +118,15 @@ function previewLine(prose: string): string {
 }
 
 /**
- * Story tab — player-facing narration + action input.
- * Latest-focus journal; Map owns technical path/exits.
+ * Story surface — Base44-style chat: DM avatar + narrator bubbles,
+ * player action bubbles, compose row. Preserves T-017–019 engine wiring.
  */
 export function SceneScreen({
   campaign,
   onCampaignChange,
   embedded = false,
   onBack,
+  onOpenStills,
 }: Props) {
   const { verbosity, providerKind, apiKey, baseUrl, model } = useSettings();
   const map = useMemo(() => createStarterMap(), []);
@@ -133,7 +134,6 @@ export function SceneScreen({
   const logRef = useRef<ScrollView>(null);
   const bootstrappedFor = useRef<string | null>(null);
   const beatsRef = useRef<StoryBeat[]>([]);
-  /** Tracks location last known by Story — Map-driven changes sync here. */
   const lastLocRef = useRef<string | null>(null);
   const mapSyncBusy = useRef(false);
 
@@ -142,6 +142,7 @@ export function SceneScreen({
   const [busy, setBusy] = useState(false);
   const [action, setAction] = useState('');
   const [earlierOpen, setEarlierOpen] = useState(false);
+  const pendingPlayerLine = useRef<string | null>(null);
 
   const playNarrator = useCallback(() => {
     return createPlayNarrator({
@@ -155,12 +156,15 @@ export function SceneScreen({
   const applyBeat = useCallback(
     (beat: SceneBeatResult) => {
       const prose = playerFacingProse(beat.prose);
+      const playerLine = pendingPlayerLine.current;
+      pendingPlayerLine.current = null;
       const entry: StoryBeat = {
         id: `${beat.campaign.session.turn}-${Date.now()}`,
         prose,
         checkLine: beat.check?.line ?? null,
         still: beat.still,
         placeLine: naturalPlaceLine(beat.where),
+        playerLine,
       };
       const next = [...beatsRef.current, entry].slice(-MAX_STORY_BEATS);
       beatsRef.current = next;
@@ -239,6 +243,7 @@ export function SceneScreen({
         if (opts.playerAction) setAction('');
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
+        pendingPlayerLine.current = null;
       } finally {
         setBusy(false);
       }
@@ -280,12 +285,10 @@ export function SceneScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaign.id]);
 
-  // T-018: Map travel updates location without Story applying a beat — sync place + narrate arrival.
   useEffect(() => {
     if (bootstrappedFor.current !== campaign.id) return;
     const loc = campaign.session.locationId ?? null;
     if (loc === lastLocRef.current) return;
-    // Wait out in-flight Story beats so we do not drop a Map travel sync.
     if (busy || mapSyncBusy.current) return;
 
     lastLocRef.current = loc;
@@ -323,6 +326,7 @@ export function SceneScreen({
   const submitAction = () => {
     const text = action.trim();
     if (!text || busy) return;
+    pendingPlayerLine.current = text;
     void runBeat({ playerAction: text, beat: 'custom' });
   };
 
@@ -338,6 +342,29 @@ export function SceneScreen({
   const prior = beats.length > 1 ? beats.slice(0, -1) : [];
   const latest = beats.length > 0 ? beats[beats.length - 1]! : null;
   const headerPlace = latest?.placeLine ?? null;
+
+  const renderNarratorBubble = (b: StoryBeat, key: string) => (
+    <View key={key} style={styles.dmRow}>
+      <View style={styles.dmAvatar}>
+        <Text style={styles.dmAvatarGlyph}>✦</Text>
+      </View>
+      <View style={styles.dmCol}>
+        <Text style={styles.dmName}>Narrator</Text>
+        <View style={styles.dmBubble}>
+          <Text style={styles.prose}>{b.prose}</Text>
+          {b.checkLine ? (
+            <View style={styles.checkCard}>
+              <Text style={styles.checkLabel}>Check</Text>
+              <Text style={styles.checkLine}>{b.checkLine}</Text>
+            </View>
+          ) : null}
+          {b.still ? (
+            <StillFrame still={b.still} playerFacing caption="A vision" />
+          ) : null}
+        </View>
+      </View>
+    </View>
+  );
 
   return (
     <View style={styles.flex}>
@@ -391,10 +418,19 @@ export function SceneScreen({
                 </Pressable>
                 {earlierOpen
                   ? prior.map((b) => (
-                      <View key={b.id} style={styles.earlierRow}>
-                        <Text style={styles.earlierPreview} numberOfLines={1}>
-                          {previewLine(b.prose)}
-                        </Text>
+                      <View key={b.id}>
+                        {b.playerLine ? (
+                          <View style={styles.playerRowCompact}>
+                            <Text style={styles.earlierPreview} numberOfLines={1}>
+                              You: {previewLine(b.playerLine)}
+                            </Text>
+                          </View>
+                        ) : null}
+                        <View style={styles.earlierRow}>
+                          <Text style={styles.earlierPreview} numberOfLines={1}>
+                            {previewLine(b.prose)}
+                          </Text>
+                        </View>
                       </View>
                     ))
                   : null}
@@ -402,52 +438,46 @@ export function SceneScreen({
             ) : null}
 
             {latest ? (
-              <View style={styles.beatCard}>
-                <Text style={styles.prose}>{latest.prose}</Text>
-                {latest.checkLine ? (
-                  <View style={styles.checkCard}>
-                    <Text style={styles.checkLabel}>Check</Text>
-                    <Text style={styles.checkLine}>{latest.checkLine}</Text>
+              <>
+                {latest.playerLine ? (
+                  <View style={styles.playerRow}>
+                    <View style={styles.playerBubble}>
+                      <Text style={styles.playerProse}>{latest.playerLine}</Text>
+                    </View>
                   </View>
                 ) : null}
-                {latest.still ? (
-                  <StillFrame
-                    still={latest.still}
-                    playerFacing
-                    caption="A vision"
-                  />
-                ) : null}
-              </View>
+                {renderNarratorBubble(latest, latest.id)}
+              </>
             ) : null}
           </>
         )}
 
         <Text style={styles.section}>What do you do?</Text>
-        <TextInput
-          value={action}
-          onChangeText={setAction}
-          placeholder="Speak, look, move, or act…"
-          placeholderTextColor={theme.colors.textMuted}
-          style={styles.input}
-          editable={!busy}
-          multiline
-          accessibilityLabel="Player action"
-        />
-
-        <Pressable
-          accessibilityRole="button"
-          onPress={submitAction}
-          disabled={busy || !action.trim()}
-          style={({ pressed }) => [
-            styles.primary,
-            pressed && styles.pressed,
-            (busy || !action.trim()) && styles.disabled,
-          ]}
-        >
-          <Text style={styles.primaryLabel}>
-            {busy ? 'Resolving…' : 'Submit'}
-          </Text>
-        </Pressable>
+        <View style={styles.composeRow}>
+          <TextInput
+            value={action}
+            onChangeText={setAction}
+            placeholder="Speak, look, move, or act…"
+            placeholderTextColor={theme.colors.textMuted}
+            style={styles.input}
+            editable={!busy}
+            multiline
+            accessibilityLabel="Player action"
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Send action"
+            onPress={submitAction}
+            disabled={busy || !action.trim()}
+            style={({ pressed }) => [
+              styles.send,
+              pressed && styles.pressed,
+              (busy || !action.trim()) && styles.disabled,
+            ]}
+          >
+            <Text style={styles.sendLabel}>{busy ? '…' : '➤'}</Text>
+          </Pressable>
+        </View>
 
         <View style={styles.row}>
           <Pressable
@@ -479,6 +509,19 @@ export function SceneScreen({
           >
             <Text style={styles.secondaryLabel}>Show me</Text>
           </Pressable>
+
+          {onOpenStills ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={onOpenStills}
+              style={({ pressed }) => [
+                styles.secondary,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.secondaryLabel}>Visions</Text>
+            </Pressable>
+          ) : null}
         </View>
       </ScrollView>
     </View>
@@ -560,18 +603,71 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.colors.border,
   },
+  playerRowCompact: {
+    paddingTop: 6,
+    paddingHorizontal: 4,
+  },
   earlierPreview: {
     color: theme.colors.textMuted,
     fontSize: 13,
     lineHeight: 18,
   },
-  beatCard: {
+  dmRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: theme.spacing.md,
+    gap: theme.spacing.sm,
+  },
+  dmAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: theme.colors.accent,
+    backgroundColor: '#241c16',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dmAvatarGlyph: {
+    color: theme.colors.accent,
+    fontSize: 16,
+  },
+  dmCol: {
+    flex: 1,
+  },
+  dmName: {
+    color: theme.colors.accent,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  dmBubble: {
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface,
-    borderRadius: 12,
+    borderRadius: 14,
+    borderTopLeftRadius: 4,
     padding: theme.spacing.md,
-    marginBottom: theme.spacing.md,
+  },
+  playerRow: {
+    alignItems: 'flex-end',
+    marginBottom: theme.spacing.sm,
+  },
+  playerBubble: {
+    maxWidth: '88%',
+    backgroundColor: theme.colors.accent,
+    borderRadius: 14,
+    borderTopRightRadius: 4,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+  },
+  playerProse: {
+    color: theme.colors.background,
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '600',
   },
   prose: {
     color: theme.colors.text,
@@ -605,28 +701,34 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.sm,
     marginTop: theme.spacing.xs,
   },
+  composeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.md,
+  },
   input: {
+    flex: 1,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface,
     borderRadius: 12,
     color: theme.colors.text,
     padding: theme.spacing.md,
-    minHeight: 72,
+    minHeight: 56,
     textAlignVertical: 'top',
-    marginBottom: theme.spacing.md,
   },
-  primary: {
+  send: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: theme.colors.accent,
-    borderRadius: 12,
-    paddingVertical: theme.spacing.md,
-    paddingHorizontal: theme.spacing.lg,
     alignItems: 'center',
-    marginBottom: theme.spacing.sm,
+    justifyContent: 'center',
   },
-  primaryLabel: {
+  sendLabel: {
     color: theme.colors.background,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
   },
   row: {

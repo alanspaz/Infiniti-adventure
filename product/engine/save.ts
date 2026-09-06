@@ -15,6 +15,8 @@ export type StoryBeatRecord = {
   stillCacheKey: string | null;
   /** Natural place line for Story (never Map path). */
   placeLine: string | null;
+  /** Optional player action line for chat bubbles. */
+  playerLine: string | null;
 };
 
 export type SessionState = {
@@ -79,6 +81,10 @@ function normalizeStoryBeats(
       b.placeLine === undefined || b.placeLine === null
         ? null
         : String(b.placeLine),
+    playerLine:
+      b.playerLine === undefined || b.playerLine === null
+        ? null
+        : String(b.playerLine),
   }));
 }
 
@@ -181,7 +187,10 @@ function isStoryBeatRecord(value: unknown): value is StoryBeatRecord {
     (b.stillCacheKey === null || typeof b.stillCacheKey === 'string') &&
     (b.placeLine === undefined ||
       b.placeLine === null ||
-      typeof b.placeLine === 'string')
+      typeof b.placeLine === 'string') &&
+    (b.playerLine === undefined ||
+      b.playerLine === null ||
+      typeof b.playerLine === 'string')
   );
 }
 

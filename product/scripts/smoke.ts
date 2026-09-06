@@ -321,7 +321,7 @@ async function main() {
   );
   assert.match(sceneSrc, /resolveSceneBeat/);
   assert.match(sceneSrc, /Show me/);
-  assert.match(sceneSrc, /Submit/);
+  assert.match(sceneSrc, /Send action|composeRow|playerBubble/);
   assert.match(sceneSrc, /verbosity/);
   assert.match(sceneSrc, /StillFrame/);
   assert.match(sceneSrc, /createAppStillProvider|stills:/);
@@ -335,13 +335,14 @@ async function main() {
     path.join(screensDir, 'PlayShell.tsx'),
     'utf8',
   );
-  assert.match(playShellSrc, /PlayTabBar/);
+  assert.match(playShellSrc, /PlayIconGrid/);
   assert.match(playShellSrc, /Story|quest|companions|items/i);
   assert.match(playShellSrc, /MapScreen/);
   assert.match(playShellSrc, /CharacterSheetScreen/);
   assert.match(playShellSrc, /SettingsScreen/);
   assert.match(playShellSrc, /DiceScreen/);
   assert.match(playShellSrc, /StillsScreen/);
+  assert.match(playShellSrc, /CombatStatsTab/);
 
   const assetsDir = path.resolve(__dirname, '../assets');
   assert.ok(fs.existsSync(path.join(assetsDir, 'icon.png')), 'icon.png missing');
@@ -355,8 +356,8 @@ async function main() {
   assert.equal(appJson.expo.splash.image, './assets/splash.png');
   assert.equal(appJson.expo.splash.backgroundColor, '#140f0c');
 
-  const tabBarPath = path.resolve(__dirname, '../src/components/PlayTabBar.tsx');
-  assert.ok(fs.existsSync(tabBarPath), 'PlayTabBar.tsx missing');
+  const iconGridPath = path.resolve(__dirname, '../src/components/PlayIconGrid.tsx');
+  assert.ok(fs.existsSync(iconGridPath), 'PlayIconGrid.tsx missing');
 
   const stillsSrc = fs.readFileSync(
     path.join(screensDir, 'StillsScreen.tsx'),

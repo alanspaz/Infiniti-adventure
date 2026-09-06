@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { CampaignSave } from '../../engine';
-import { PlayTabBar, type PlayTabId } from '../components/PlayTabBar';
+import {
+  PlayIconGrid,
+  type PlayPanelId,
+  type PlaySurfaceId,
+} from '../components/PlayIconGrid';
 import { theme } from '../theme';
 import { SceneScreen } from './SceneScreen';
 import { QuestTab } from './QuestTab';
@@ -10,22 +14,25 @@ import { CompanionsTab } from './CompanionsTab';
 import { ItemsTab } from './ItemsTab';
 import { MapScreen } from './MapScreen';
 import { DiceScreen } from './DiceScreen';
+import { CombatStatsTab } from './CombatStatsTab';
 import { StillsScreen } from './StillsScreen';
 import { SettingsScreen } from './SettingsScreen';
 
 type Props = {
   campaign: CampaignSave;
   onCampaignChange: (campaign: CampaignSave) => void;
-  /** Leave play shell back to Home. */
   onLeave: () => void;
 };
 
 /**
- * In-campaign play shell. Story stays mounted across tab switches.
- * Dice + Stills live here (T-019); Map travel syncs Story (T-018).
+ * Base44-inspired play shell: Story chat is the default surface;
+ * header icon grid opens secondary panels. Story stays mounted (T-017).
  */
 export function PlayShell({ campaign, onCampaignChange, onLeave }: Props) {
-  const [tab, setTab] = useState<PlayTabId>('story');
+  const [surface, setSurface] = useState<PlaySurfaceId>('story');
+
+  const openPanel = (id: PlayPanelId) => setSurface(id);
+  const openStory = () => setSurface('story');
 
   return (
     <View style={styles.root}>
@@ -46,39 +53,49 @@ export function PlayShell({ campaign, onCampaignChange, onLeave }: Props) {
         </Pressable>
       </View>
 
-      <PlayTabBar active={tab} onChange={setTab} />
+      <PlayIconGrid
+        active={surface}
+        onChange={openPanel}
+        onStory={openStory}
+      />
 
       <View style={styles.body}>
         <View
-          style={[styles.panel, tab !== 'story' && styles.panelHidden]}
-          pointerEvents={tab === 'story' ? 'auto' : 'none'}
+          style={[styles.panel, surface !== 'story' && styles.panelHidden]}
+          pointerEvents={surface === 'story' ? 'auto' : 'none'}
         >
           <SceneScreen
             campaign={campaign}
             onCampaignChange={onCampaignChange}
             embedded
+            onOpenStills={() => setSurface('stills')}
           />
         </View>
-        {tab === 'quest' ? <QuestTab campaign={campaign} /> : null}
-        {tab === 'character' ? (
+        {surface === 'quest' ? <QuestTab campaign={campaign} /> : null}
+        {surface === 'character' ? (
           <CharacterSheetScreen campaign={campaign} embedded />
         ) : null}
-        {tab === 'companions' ? <CompanionsTab campaign={campaign} /> : null}
-        {tab === 'items' ? <ItemsTab campaign={campaign} /> : null}
-        {tab === 'map' ? (
+        {surface === 'companions' ? (
+          <CompanionsTab campaign={campaign} />
+        ) : null}
+        {surface === 'items' ? <ItemsTab campaign={campaign} /> : null}
+        {surface === 'map' ? (
           <MapScreen
             campaign={campaign}
             onCampaignChange={onCampaignChange}
             embedded
           />
         ) : null}
-        {tab === 'dice' ? (
+        {surface === 'dice' ? (
           <DiceScreen campaign={campaign} embedded />
         ) : null}
-        {tab === 'stills' ? (
+        {surface === 'combat' ? (
+          <CombatStatsTab campaign={campaign} />
+        ) : null}
+        {surface === 'stills' ? (
           <StillsScreen campaign={campaign} embedded />
         ) : null}
-        {tab === 'settings' ? <SettingsScreen embedded /> : null}
+        {surface === 'settings' ? <SettingsScreen embedded /> : null}
       </View>
     </View>
   );
