@@ -11,6 +11,22 @@ async function main() {
   assert.equal(typeof engine.createCharacter, 'function');
   assert.equal(typeof engine.rollDie, 'function');
   assert.equal(typeof engine.createCampaign, 'function');
+  assert.equal(typeof engine.applyCampaignPatch, 'function');
+  assert.equal(typeof engine.partitionQuests, 'function');
+  assert.equal(typeof engine.safeInventory, 'function');
+  const qCamp = engine.createCampaign({ id: 'smoke-q01' });
+  assert.ok(qCamp.world);
+  assert.equal(qCamp.world!.quests[0]?.id, engine.STARTER_QUEST.id);
+  assert.equal(engine.partitionQuests([]).active.length, 0);
+  let invCamp = engine.createCampaign({ id: 'smoke-i01', world: { quests: [] } });
+  invCamp = engine.applyCampaignPatch(invCamp, { grantGold: 5, addItem: { id: 'torch', name: 'Torch', qty: 1 } });
+  invCamp = engine.applyCampaignPatch(invCamp, { spendGold: 99 });
+  assert.equal(engine.campaignToState(invCamp).inventory.gold, 5); // reject overspend
+  invCamp = engine.applyCampaignPatch(invCamp, { spendGold: 2, removeItemId: 'torch' });
+  assert.equal(engine.campaignToState(invCamp).inventory.gold, 3);
+  assert.equal(engine.campaignToState(invCamp).inventory.items.length, 0);
+  assert.equal(engine.safeInventory({ gold: -1, items: [] }).gold, 0);
+
   assert.equal(typeof engine.MemoryPersistStore, 'function');
   assert.equal(typeof engine.ACTIVE_CAMPAIGN_KEY, 'string');
   assert.equal(engine.ACTIVE_CAMPAIGN_KEY, 'ia.save.activeId');
@@ -288,6 +304,15 @@ async function main() {
       `missing screen ${f}`,
     );
   }
+  const questSrc = fs.readFileSync(path.join(screensDir, 'QuestTab.tsx'), 'utf8');
+  assert.match(questSrc, /partitionQuests/);
+  assert.match(questSrc, /No quests yet|No active quests/);
+  assert.doesNotMatch(questSrc, /useState\(/); // context-only, no local quest copy
+  const itemsSrc = fs.readFileSync(path.join(screensDir, 'ItemsTab.tsx'), 'utf8');
+  assert.match(itemsSrc, /safeInventory|inventory/);
+  assert.match(itemsSrc, /Gold/);
+  assert.doesNotMatch(itemsSrc, /useState\(/);
+
 
   // App entry: prefer live import; if RN native bindings are absent in Node,
   // fall back to verifying the source module is present and exports default.

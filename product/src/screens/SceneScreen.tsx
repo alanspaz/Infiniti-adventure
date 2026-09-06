@@ -187,6 +187,7 @@ export function SceneScreen({
         checkSuccess: beat.check ? beat.check.result.success : null,
         placeLine,
         storyBeats: records,
+        quests: beat.campaign.world?.quests,
       });
       // Prefer engine campaign (turn/location/log) then overlay patches.
       let saved = withSession(beat.campaign, { storyBeats: records });

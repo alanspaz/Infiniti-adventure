@@ -18,13 +18,29 @@ export type InventoryState = {
   items: InventoryItem[];
 };
 
-export type QuestStatus = 'active' | 'complete' | 'failed';
+/**
+ * Quest journal status (Q-01).
+ * `done` is canonical; legacy `complete` normalizes to `done`.
+ */
+export type QuestStatus = 'active' | 'done' | 'failed';
 
 export type QuestRecord = {
   id: string;
   title: string;
   status: QuestStatus;
+  /** Short objective blurb. */
   summary?: string;
+  /** Optional progress notes (updated via updateQuest). */
+  progressNotes?: string;
+};
+
+/** Stub starter quest for new campaigns (smoke / empty-journal fill). */
+export const STARTER_QUEST: QuestRecord = {
+  id: 'quest-first-steps',
+  title: 'First steps',
+  status: 'active',
+  summary: 'Find your footing in Embervale and learn what the town needs.',
+  progressNotes: 'Start at the Copper Kettle and ask around.',
 };
 
 export type CombatMode =
@@ -84,16 +100,42 @@ export type CampaignState = {
   updatedAt: string;
 };
 
+/**
+ * Structured world/session patches.
+ *
+ * Gold policy (I-01):
+ * - Persisted `inventory.gold` is always clamped ≥ 0 on normalize/write.
+ * - `grantGold` adds a non-negative amount.
+ * - `spendGold` (and negative `addGold`) **reject** when the spend would
+ *   go below 0 — gold is left unchanged (prefer reject over silent clamp).
+ * - Direct `inventory.gold` writes still clamp ≥ 0 as a safety net.
+ */
 export type CampaignStatePatch = {
   locationId?: string | null;
   inventory?: Partial<InventoryState>;
-  /** Stub item hook — add or stack by id. */
+  /** Add or stack an item by id. */
   addItem?: InventoryItem;
-  addGold?: number;
+  /** Remove an item entirely by id. */
   removeItemId?: string;
-  /** Stub quest hooks. */
+  /**
+   * Signed gold delta (legacy/story stub). Positive grants; negative spends
+   * with reject-if-insufficient (same rules as spendGold).
+   */
+  addGold?: number;
+  /** Grant gold (amount floored; negatives treated as 0). */
+  grantGold?: number;
+  /** Spend gold; rejected (no change) if amount > current gold. */
+  spendGold?: number;
+  /** Upsert quest by id (story stub / accept fallback). */
   upsertQuest?: QuestRecord;
+  /** Accept a quest (status forced active). */
+  acceptQuest?: Omit<QuestRecord, 'status'> & { status?: QuestStatus };
+  /** Patch fields on an existing quest by id (progress notes, title, …). */
+  updateQuest?: Partial<QuestRecord> & { id: string };
+  /** Mark quest done. */
   completeQuestId?: string;
+  /** Mark quest failed. */
+  failQuestId?: string;
   combat?: Partial<CombatState>;
   storyMeta?: Partial<StoryMeta>;
   storyBeats?: StoryBeatRecord[];
@@ -159,6 +201,12 @@ function normalizeInventory(value: InventoryState | undefined): InventoryState {
   return { gold, items };
 }
 
+function normalizeQuestStatus(status: unknown): QuestStatus {
+  if (status === 'done' || status === 'complete') return 'done';
+  if (status === 'failed') return 'failed';
+  return 'active';
+}
+
 function normalizeQuests(value: QuestRecord[] | undefined): QuestRecord[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -166,12 +214,48 @@ function normalizeQuests(value: QuestRecord[] | undefined): QuestRecord[] {
     .map((q) => ({
       id: String(q.id),
       title: String(q.title ?? 'Quest'),
-      status:
-        q.status === 'complete' || q.status === 'failed' || q.status === 'active'
-          ? q.status
-          : 'active',
+      status: normalizeQuestStatus(q.status),
       ...(q.summary !== undefined ? { summary: String(q.summary) } : {}),
+      ...(q.progressNotes !== undefined
+        ? { progressNotes: String(q.progressNotes) }
+        : {}),
     }));
+}
+
+/** Panel-safe quest list — never throws; empty is valid (Base44 anti-pattern). */
+export function safeQuestList(
+  value: QuestRecord[] | null | undefined,
+): QuestRecord[] {
+  try {
+    return normalizeQuests(Array.isArray(value) ? value : []);
+  } catch {
+    return [];
+  }
+}
+
+/** Partition quests for Quest tab (active + done; failed listed under done-ish Other). */
+export function partitionQuests(value: QuestRecord[] | null | undefined): {
+  active: QuestRecord[];
+  done: QuestRecord[];
+  failed: QuestRecord[];
+} {
+  const list = safeQuestList(value);
+  return {
+    active: list.filter((q) => q.status === 'active'),
+    done: list.filter((q) => q.status === 'done'),
+    failed: list.filter((q) => q.status === 'failed'),
+  };
+}
+
+/** Panel-safe inventory — gold always ≥ 0. */
+export function safeInventory(
+  value: InventoryState | null | undefined,
+): InventoryState {
+  try {
+    return normalizeInventory(value ?? undefined);
+  } catch {
+    return createEmptyInventory();
+  }
 }
 
 function normalizeCombat(value: CombatState | undefined): CombatState {
@@ -295,21 +379,50 @@ export function campaignToState(campaign: CampaignSave): CampaignState {
   };
 }
 
+function applyGoldDelta(
+  gold: number,
+  delta: number,
+): { gold: number; rejected: boolean } {
+  if (delta >= 0) {
+    return { gold: gold + delta, rejected: false };
+  }
+  const spend = -delta;
+  // I-01: prefer reject spend that would go negative (do not silent-clamp).
+  if (spend > gold) {
+    return { gold, rejected: true };
+  }
+  return { gold: gold - spend, rejected: false };
+}
+
 function applyInventoryPatch(
   inv: InventoryState,
   patch: CampaignStatePatch,
 ): InventoryState {
-  // Anti-pattern: Base44 showed gold -1 — clamp ≥ 0 on every write.
+  // Safety net: clamp any direct gold write ≥ 0 (Base44 anti-pattern: gold -1).
   const rawGold =
     patch.inventory?.gold !== undefined ? patch.inventory.gold : inv.gold;
   let next: InventoryState = {
     gold: Math.max(0, Math.floor(Number(rawGold) || 0)),
     items: patch.inventory?.items ? [...patch.inventory.items] : [...inv.items],
   };
+
+  if (typeof patch.grantGold === 'number') {
+    const amount = Math.max(0, Math.floor(Number(patch.grantGold) || 0));
+    next = { ...next, gold: next.gold + amount };
+  }
+
+  if (typeof patch.spendGold === 'number') {
+    const amount = Math.max(0, Math.floor(Number(patch.spendGold) || 0));
+    const res = applyGoldDelta(next.gold, -amount);
+    next = { ...next, gold: res.gold };
+  }
+
   if (typeof patch.addGold === 'number') {
     const delta = Math.floor(Number(patch.addGold) || 0);
-    next = { ...next, gold: Math.max(0, next.gold + delta) };
+    const res = applyGoldDelta(next.gold, delta);
+    next = { ...next, gold: res.gold };
   }
+
   if (patch.addItem) {
     const item = {
       id: String(patch.addItem.id),
@@ -341,17 +454,57 @@ function applyQuestPatch(
   patch: CampaignStatePatch,
 ): QuestRecord[] {
   let next = [...quests];
+
+  if (patch.acceptQuest) {
+    const raw = patch.acceptQuest;
+    const q: QuestRecord = {
+      id: String(raw.id),
+      title: String(raw.title ?? 'Quest'),
+      status: 'active',
+      ...(raw.summary !== undefined ? { summary: String(raw.summary) } : {}),
+      ...(raw.progressNotes !== undefined
+        ? { progressNotes: String(raw.progressNotes) }
+        : {}),
+    };
+    const idx = next.findIndex((x) => x.id === q.id);
+    if (idx >= 0) next[idx] = { ...next[idx]!, ...q, status: 'active' };
+    else next.push(q);
+  }
+
   if (patch.upsertQuest) {
     const q = patch.upsertQuest;
     const idx = next.findIndex((x) => x.id === q.id);
     if (idx >= 0) next[idx] = { ...next[idx]!, ...q };
     else next.push({ ...q });
   }
+
+  if (patch.updateQuest) {
+    const { id, ...rest } = patch.updateQuest;
+    const idx = next.findIndex((x) => x.id === id);
+    if (idx >= 0) {
+      next[idx] = {
+        ...next[idx]!,
+        ...rest,
+        id,
+        ...(rest.status !== undefined
+          ? { status: normalizeQuestStatus(rest.status) }
+          : {}),
+      };
+    }
+  }
+
   if (patch.completeQuestId) {
     next = next.map((q) =>
-      q.id === patch.completeQuestId ? { ...q, status: 'complete' as const } : q,
+      q.id === patch.completeQuestId ? { ...q, status: 'done' as const } : q,
     );
   }
+
+  if (patch.failQuestId) {
+    next = next.map((q) =>
+      q.id === patch.failQuestId ? { ...q, status: 'failed' as const } : q,
+    );
+  }
+
   return normalizeQuests(next);
 }
 
@@ -420,6 +573,8 @@ export function patchesFromSceneBeat(input: {
   checkSuccess?: boolean | null;
   placeLine?: string | null;
   storyBeats?: StoryBeatRecord[];
+  /** Current quests — used to resolve complete/fail stubs. */
+  quests?: QuestRecord[];
 }): CampaignStatePatch {
   const patch: CampaignStatePatch = {};
   const action = (input.playerAction ?? '').trim();
@@ -449,37 +604,59 @@ export function patchesFromSceneBeat(input: {
     }
   }
 
-  // Stub gold: "find/gain N gold/coins"
+  // Stub gold grant: "find/gain N gold/coins"
   const gold = action.match(
     /\b(?:find|gain|earn|loot|collect)\s+(\d+)\s*(?:gold|coins?|gp)\b/i,
   );
   if (gold?.[1]) {
-    patch.addGold = Math.min(9999, parseInt(gold[1], 10) || 0);
+    patch.grantGold = Math.min(9999, parseInt(gold[1], 10) || 0);
   }
 
-  // Stub quest accept: "accept quest …" / "quest to …"
+  // Stub gold spend: "spend/pay N gold"
+  const spend = action.match(
+    /\b(?:spend|pay|give)\s+(\d+)\s*(?:gold|coins?|gp)\b/i,
+  );
+  if (spend?.[1]) {
+    patch.spendGold = Math.min(9999, parseInt(spend[1], 10) || 0);
+  }
+
+  // Stub quest accept
   const questAccept = action.match(
     /\b(?:accept|take\s+on|start)\s+(?:the\s+)?quest\b(?:\s*(?:to|for|:)\s*(.+))?$/i,
   );
   if (questAccept) {
     const title = (questAccept[1] ?? 'New quest').trim().slice(0, 64) || 'New quest';
     const id = `quest-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'new'}`;
-    patch.upsertQuest = {
+    patch.acceptQuest = {
       id,
       title,
-      status: 'active',
       summary: 'Noted from your actions.',
     };
   }
 
-  // Stub quest complete
+  // Stub quest progress: "update quest: …" / "note on quest: …"
+  const questNote = action.match(
+    /\b(?:update|note(?:\s+on)?)\s+(?:the\s+)?quest\b(?:\s*(?:to|for|:)\s*(.+))?$/i,
+  );
+  if (questNote) {
+    const note = (questNote[1] ?? '').trim().slice(0, 120);
+    const active = safeQuestList(input.quests).find((q) => q.status === 'active');
+    if (active && note) {
+      patch.updateQuest = { id: active.id, progressNotes: note };
+    }
+  }
+
+  // Stub quest complete → first active
   if (/\b(?:complete|finish|done\s+with)\s+(?:the\s+)?quest\b/i.test(action)) {
-    // Mark first active quest complete if any — applied by caller with id if known
-    patch.flags = { ...(patch.flags ?? {}), last_quest_complete_attempt: true };
+    const active = safeQuestList(input.quests).find((q) => q.status === 'active');
+    if (active) {
+      patch.completeQuestId = active.id;
+    } else {
+      patch.flags = { ...(patch.flags ?? {}), last_quest_complete_attempt: true };
+    }
   }
 
   if (input.checkSuccess === false) {
-    // Mild combat stub: failed attack-ish checks chip HP when already in combat handled elsewhere
     patch.flags = {
       ...(patch.flags ?? {}),
       last_check_failed: true,

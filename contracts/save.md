@@ -33,8 +33,20 @@ Top-level document written to durable storage.
 | `rngSeed` | number \| null | Optional seed for reproducible dice |
 | `storyBeats` | `StoryBeatRecord[]` (optional) | Player-facing Story log for Continue hydrate; capped |
 
-## CampaignState (CS-01)
-PlayShell panels read a unified `CampaignState` view (`campaignToState`) over `party` + `session` + `world`. Story applies structured patches (`applyCampaignPatch` / `patchesFromSceneBeat`) — no per-tab local copies. Gold is clamped ≥ 0 on every patch.
+## CampaignState (CS-01 / Q-01 / I-01)
+PlayShell panels read a unified `CampaignState` view (`campaignToState`) over `party` + `session` + `world`. Story applies structured patches (`applyCampaignPatch` / `patchesFromSceneBeat`) — no per-tab local copies.
+
+### Quests (Q-01)
+- `world.quests[]`: `{ id, title, status, summary?, progressNotes? }`
+- Status: `active` | `done` | `failed` (legacy wire value `complete` normalizes to `done`)
+- Patches: `acceptQuest`, `updateQuest`, `completeQuestId`, `failQuestId` (+ `upsertQuest` stub)
+- New campaigns seed an optional starter quest (`quest-first-steps`); older saves without `world` stay empty
+- Quest tab shows active + done; empty journal must never crash
+
+### Inventory (I-01)
+- `world.inventory`: `{ gold, items[] }` with `gold ≥ 0` always on persist/normalize
+- Patches: `grantGold`, `spendGold`, `addGold` (signed), `addItem`, `removeItemId`
+- **Gold policy:** prefer **reject** a spend that would go negative (gold unchanged); always **clamp** persisted gold ≥ 0 as a safety net on direct writes / normalize
 
 ## Persistence interface
 ```ts

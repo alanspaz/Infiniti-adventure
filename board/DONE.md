@@ -1,5 +1,13 @@
 # Done
 
+## Q-01 — Quests
+- CampaignState quests + accept/update/complete/fail patches; starter quest; Quest tab active+done; empty safe
+
+## I-01 — Inventory
+- Gold grant/spend (reject overspend) + items; Items tab; persist via world; clamp ≥ 0
+
+# Done
+
 ## T-018 — Map travel ↔ Story sync
 - SceneScreen syncs place line + continue beat (skipTravel) when Map changes locationId
 

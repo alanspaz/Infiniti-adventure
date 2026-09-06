@@ -4,6 +4,7 @@ import {
   campaignSaveKey,
 } from './persist';
 import {
+  STARTER_QUEST,
   createEmptyWorld,
   isCampaignWorldState,
   normalizeWorld,
@@ -127,7 +128,14 @@ export function createCampaign(input: CreateCampaignInput): CampaignSave {
     party: input.party ? [...input.party] : [],
     session: createEmptySession(input.session),
     flags: { ...(input.flags ?? {}) },
-    world: createEmptyWorld(input.world),
+    world: createEmptyWorld({
+      ...input.world,
+      // Q-01: optional stub starter quest for new campaigns (explicit quests win).
+      quests:
+        input.world?.quests !== undefined
+          ? input.world.quests
+          : [STARTER_QUEST],
+    }),
   };
 }
 

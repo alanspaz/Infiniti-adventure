@@ -1,13 +1,18 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { safeInventory } from '../../engine';
 import { useCampaignState } from '../campaign';
 import { theme } from '../theme';
 
-/** Inventory — CampaignState.inventory only; gold always ≥ 0. */
+/**
+ * Inventory — CampaignState.inventory only (I-01); gold always ≥ 0.
+ * Persist/reload via existing save `world` slice.
+ */
 export function ItemsTab() {
   const { state } = useCampaignState();
-  const gold = Math.max(0, Math.floor(Number(state.inventory?.gold) || 0));
-  const items = Array.isArray(state.inventory?.items) ? state.inventory.items : [];
+  const inv = safeInventory(state.inventory);
+  const gold = inv.gold;
+  const items = inv.items;
   const pcName = state.character?.name ?? 'your pack';
 
   return (

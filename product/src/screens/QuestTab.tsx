@@ -1,24 +1,18 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { partitionQuests } from '../../engine';
 import { useCampaignState } from '../campaign';
 import { theme } from '../theme';
 
 /**
- * Quest journal — reads CampaignState.quests ONLY.
- * Must never crash on open (Base44 anti-pattern: blank/crash with “active” quests).
- * Empty list is valid.
+ * Quest journal — reads CampaignState.quests ONLY (Q-01).
+ * Must never crash on open (Base44 anti-pattern). Empty list is valid.
+ * Shows active + done (failed listed separately when present).
  */
 export function QuestTab() {
   const { state } = useCampaignState();
-  let quests = state.quests;
-  try {
-    if (!Array.isArray(quests)) quests = [];
-  } catch {
-    quests = [];
-  }
-
-  const active = quests.filter((q) => q && q.status === 'active');
-  const other = quests.filter((q) => q && q.status !== 'active');
+  const { active, done, failed } = partitionQuests(state.quests);
+  const total = active.length + done.length + failed.length;
 
   return (
     <ScrollView
@@ -28,9 +22,9 @@ export function QuestTab() {
     >
       <Text style={styles.subtitle}>{state.title}</Text>
 
-      {quests.length === 0 ? (
+      {total === 0 ? (
         <View style={styles.card}>
-          <Text style={styles.emptyTitle}>No active quests yet</Text>
+          <Text style={styles.emptyTitle}>No quests yet</Text>
           <Text style={styles.emptyBody}>
             Your journal is quiet for now. Objectives will appear here when the
             adventure gives you something to chase.
@@ -39,29 +33,41 @@ export function QuestTab() {
       ) : (
         <>
           {active.length > 0 ? (
-            <Text style={styles.section}>
-              Active ({active.length})
-            </Text>
+            <Text style={styles.section}>Active ({active.length})</Text>
           ) : null}
           {active.map((q) => (
             <View key={q.id || q.title} style={styles.card}>
               <Text style={styles.questTitle}>{q.title || 'Quest'}</Text>
               <Text style={styles.badge}>Active</Text>
-              {q.summary ? (
-                <Text style={styles.body}>{q.summary}</Text>
+              {q.summary ? <Text style={styles.body}>{q.summary}</Text> : null}
+              {q.progressNotes ? (
+                <Text style={styles.notes}>Progress: {q.progressNotes}</Text>
               ) : null}
             </View>
           ))}
-          {other.length > 0 ? (
-            <Text style={styles.section}>Other</Text>
+
+          {done.length > 0 ? (
+            <Text style={styles.section}>Done ({done.length})</Text>
           ) : null}
-          {other.map((q) => (
+          {done.map((q) => (
             <View key={q.id || q.title} style={styles.card}>
               <Text style={styles.questTitle}>{q.title || 'Quest'}</Text>
-              <Text style={styles.badgeMuted}>{q.status}</Text>
-              {q.summary ? (
-                <Text style={styles.body}>{q.summary}</Text>
+              <Text style={styles.badgeMuted}>Done</Text>
+              {q.summary ? <Text style={styles.body}>{q.summary}</Text> : null}
+              {q.progressNotes ? (
+                <Text style={styles.notes}>Progress: {q.progressNotes}</Text>
               ) : null}
+            </View>
+          ))}
+
+          {failed.length > 0 ? (
+            <Text style={styles.section}>Failed ({failed.length})</Text>
+          ) : null}
+          {failed.map((q) => (
+            <View key={q.id || q.title} style={styles.card}>
+              <Text style={styles.questTitle}>{q.title || 'Quest'}</Text>
+              <Text style={styles.badgeMuted}>Failed</Text>
+              {q.summary ? <Text style={styles.body}>{q.summary}</Text> : null}
             </View>
           ))}
         </>
@@ -132,5 +138,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     marginTop: theme.spacing.sm,
+  },
+  notes: {
+    color: theme.colors.text,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: theme.spacing.xs,
   },
 });
