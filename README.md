@@ -39,3 +39,11 @@ Exclude product/node_modules and product/.expo. Handoff zip is flat at repo root
 ## Theme
 
 Background #140f0c, accent #d4a054. Portrait-first; tablets allowed.
+
+## Node version
+
+Prefer Node 20 or 22 LTS (package engines: >=20 <25). Node 24 may break Expo Metro bundling on Windows.
+
+## Metro bundling note
+
+If Metro fails to start with a transformFile TypeError: install babel-preset-expo as a direct dependency, keep metro.config.js from expo/metro-config, reinstall deps under product/, and use Node 22 LTS with expo start --clear.
