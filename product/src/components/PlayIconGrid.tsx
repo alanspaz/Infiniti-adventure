@@ -1,5 +1,6 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { playPanelIcon } from '../images';
 import { theme } from '../theme';
 
 /** Panels reachable from the header icon grid (Story is the default chat surface). */
@@ -16,31 +17,26 @@ export type PlayPanelId =
 
 export type PlaySurfaceId = 'story' | PlayPanelId;
 
-export const PLAY_ICONS: {
-  id: PlayPanelId;
-  label: string;
-  glyph: string;
-}[] = [
-  { id: 'character', label: 'Character', glyph: '👤' },
-  { id: 'items', label: 'Items', glyph: '🎒' },
-  { id: 'dice', label: 'Dice', glyph: '🎲' },
-  { id: 'combat', label: 'Combat', glyph: '⚔️' },
-  { id: 'quest', label: 'Quest', glyph: '📜' },
-  { id: 'companions', label: 'Companions', glyph: '🤝' },
-  { id: 'map', label: 'Map', glyph: '🗺️' },
-  { id: 'settings', label: 'Settings', glyph: '⚙️' },
+export const PLAY_ICONS: { id: Exclude<PlayPanelId, 'stills'>; label: string }[] = [
+  { id: 'character', label: 'Character' },
+  { id: 'items', label: 'Items' },
+  { id: 'dice', label: 'Dice' },
+  { id: 'combat', label: 'Combat' },
+  { id: 'quest', label: 'Quest' },
+  { id: 'companions', label: 'Party' },
+  { id: 'map', label: 'Map' },
+  { id: 'settings', label: 'Settings' },
 ];
 
 type Props = {
   active: PlaySurfaceId;
-  onChange: (id: PlayPanelId) => void;
-  /** Return to Story chat. */
+  onChange: (id: Exclude<PlayPanelId, 'stills'>) => void;
   onStory: () => void;
 };
 
 /**
- * Base44-style header icon grid (2×4). Story is not an icon — use Tale / onStory.
- * Glyphs are placeholders until Artist ships PNG icons.
+ * Base44 layout / IA theme: 2×4 header icon grid + Tale control.
+ * Icons from Artist sprite slice (`assets/ui/icons`).
  */
 export function PlayIconGrid({ active, onChange, onStory }: Props) {
   return (
@@ -79,7 +75,11 @@ export function PlayIconGrid({ active, onChange, onStory }: Props) {
                   pressed && styles.pressed,
                 ]}
               >
-                <Text style={styles.glyph}>{icon.glyph}</Text>
+                <Image
+                  source={playPanelIcon(icon.id)}
+                  style={[styles.icon, selected && styles.iconActive]}
+                  resizeMode="contain"
+                />
                 <Text
                   style={[styles.label, selected && styles.labelActive]}
                   numberOfLines={1}
@@ -109,7 +109,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
   tale: {
-    width: 56,
+    width: 52,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -143,33 +143,41 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
   },
   cell: {
-    width: '23%',
+    width: '22%',
     flexGrow: 1,
     minWidth: 64,
-    maxWidth: '25%',
+    height: 44,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: 'transparent',
     alignItems: 'center',
-    paddingVertical: 6,
+    justifyContent: 'center',
+    paddingVertical: 4,
     paddingHorizontal: 2,
   },
   cellActive: {
     borderColor: theme.colors.accent,
     backgroundColor: '#241c16',
   },
-  glyph: {
-    fontSize: 18,
+  icon: {
+    width: 24,
+    height: 24,
     marginBottom: 2,
+    opacity: 0.7,
+  },
+  iconActive: {
+    opacity: 1,
   },
   label: {
     color: theme.colors.textMuted,
     fontSize: 9,
     fontWeight: '600',
     textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   labelActive: {
     color: theme.colors.accent,

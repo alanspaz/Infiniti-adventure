@@ -48,3 +48,9 @@ Source copies also in `/workspace/ia-art-sprint-b/`.
 ## PlayShell icons (pending Artist)
 
 Header grid currently uses glyph placeholders in `PlayIconGrid`. Drop PNGs under `assets/icons/` (character, items, dice, combat, quest, companions, map, settings, optional dm-avatar) when ready — Coder will wire `require`s.
+
+## PlayShell UI (Artist)
+
+See `ui/PLAYSHELL_VISUAL_SPEC.md` and `ui/ASSETS_UI.md`.
+Sliced icons: `ui/icons/icon-*.png` from `playshell-icons-2x4.png`.
+Narrator avatar: `ui/avatar-narrator.png`.

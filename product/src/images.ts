@@ -9,7 +9,32 @@ export const appImages = {
   stillLocation: require('../assets/stills/still-stub-location.png') as ImageSourcePropType,
   stillPlayer: require('../assets/stills/still-stub-player.png') as ImageSourcePropType,
   stillItem: require('../assets/stills/still-stub-item.png') as ImageSourcePropType,
+  avatarNarrator: require('../assets/ui/avatar-narrator.png') as ImageSourcePropType,
+  iconCharacter: require('../assets/ui/icons/icon-character.png') as ImageSourcePropType,
+  iconItems: require('../assets/ui/icons/icon-items.png') as ImageSourcePropType,
+  iconDice: require('../assets/ui/icons/icon-dice.png') as ImageSourcePropType,
+  iconCombat: require('../assets/ui/icons/icon-combat.png') as ImageSourcePropType,
+  iconQuest: require('../assets/ui/icons/icon-quest.png') as ImageSourcePropType,
+  iconCompanions: require('../assets/ui/icons/icon-companions.png') as ImageSourcePropType,
+  iconMap: require('../assets/ui/icons/icon-map.png') as ImageSourcePropType,
+  iconSettings: require('../assets/ui/icons/icon-settings.png') as ImageSourcePropType,
 } as const;
+
+const PANEL_ICONS: Record<string, ImageSourcePropType> = {
+  character: appImages.iconCharacter,
+  items: appImages.iconItems,
+  dice: appImages.iconDice,
+  combat: appImages.iconCombat,
+  quest: appImages.iconQuest,
+  companions: appImages.iconCompanions,
+  map: appImages.iconMap,
+  settings: appImages.iconSettings,
+  stills: appImages.stillLocation,
+};
+
+export function playPanelIcon(id: string): ImageSourcePropType {
+  return PANEL_ICONS[id] ?? appImages.iconSettings;
+}
 
 export function packCardImage(packId: string): ImageSourcePropType | null {
   if (packId === 'hearthlight') return appImages.packHearthlight;
@@ -17,7 +42,6 @@ export function packCardImage(packId: string): ImageSourcePropType | null {
   return null;
 }
 
-/** Offline still stub art by subject; described/npc/injury fall back sensibly. */
 export function stillStubImage(
   subjectKind: StillSubjectKind | string,
 ): ImageSourcePropType {

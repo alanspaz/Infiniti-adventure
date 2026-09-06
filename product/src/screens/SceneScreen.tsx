@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,6 +20,7 @@ import {
 } from '../../engine';
 import { createPlayNarrator } from '../ai';
 import { StillFrame } from '../components/StillFrame';
+import { appImages } from '../images';
 import { createAppStillProvider } from '../persist/stillCache';
 import { useSettings } from '../settings/SettingsContext';
 import { theme } from '../theme';
@@ -345,9 +347,12 @@ export function SceneScreen({
 
   const renderNarratorBubble = (b: StoryBeat, key: string) => (
     <View key={key} style={styles.dmRow}>
-      <View style={styles.dmAvatar}>
-        <Text style={styles.dmAvatarGlyph}>✦</Text>
-      </View>
+      <Image
+        source={appImages.avatarNarrator}
+        style={styles.dmAvatar}
+        resizeMode="cover"
+        accessibilityLabel="Narrator"
+      />
       <View style={styles.dmCol}>
         <Text style={styles.dmName}>Narrator</Text>
         <View style={styles.dmBubble}>
@@ -452,12 +457,11 @@ export function SceneScreen({
           </>
         )}
 
-        <Text style={styles.section}>What do you do?</Text>
         <View style={styles.composeRow}>
           <TextInput
             value={action}
             onChangeText={setAction}
-            placeholder="Speak, look, move, or act…"
+            placeholder="What do you do?"
             placeholderTextColor={theme.colors.textMuted}
             style={styles.input}
             editable={!busy}
@@ -619,18 +623,12 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
   dmAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: theme.colors.accent,
     backgroundColor: '#241c16',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dmAvatarGlyph: {
-    color: theme.colors.accent,
-    fontSize: 16,
   },
   dmCol: {
     flex: 1,
@@ -719,9 +717,9 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   send: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 8,
     backgroundColor: theme.colors.accent,
     alignItems: 'center',
     justifyContent: 'center',

@@ -30,6 +30,10 @@ type Props = {
  */
 export function PlayShell({ campaign, onCampaignChange, onLeave }: Props) {
   const [surface, setSurface] = useState<PlaySurfaceId>('story');
+  const pc = campaign.party.length > 0 ? campaign.party[0]! : null;
+  const subtitle = pc
+    ? `${pc.name} · Level ${pc.level}`
+    : 'Solo · ready when you are';
 
   const openPanel = (id: PlayPanelId) => setSurface(id);
   const openStory = () => setSurface('story');
@@ -42,14 +46,17 @@ export function PlayShell({ campaign, onCampaignChange, onLeave }: Props) {
           <Text style={styles.title} numberOfLines={1}>
             {campaign.title}
           </Text>
+          <Text style={styles.subtitle} numberOfLines={1}>
+            {subtitle}
+          </Text>
         </View>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Leave to home"
+          accessibilityLabel="Back to home"
           onPress={onLeave}
           style={({ pressed }) => [styles.leave, pressed && styles.pressed]}
         >
-          <Text style={styles.leaveLabel}>Home</Text>
+          <Text style={styles.leaveLabel}>‹</Text>
         </Pressable>
       </View>
 
@@ -130,6 +137,11 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontSize: 18,
     fontWeight: '700',
+  },
+  subtitle: {
+    color: theme.colors.textMuted,
+    fontSize: 13,
+    marginTop: 2,
   },
   leave: {
     borderWidth: 1,
