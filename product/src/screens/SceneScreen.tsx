@@ -37,9 +37,29 @@ type StoryBeat = {
   prose: string;
   checkLine: string | null;
   still: StillResult | null;
+  placeLine: string | null;
 };
 
 const MAX_STORY_BEATS = 40;
+
+/** First sentence only, trimmed — never path separators. */
+function firstSentence(text: string): string {
+  const trimmed = text.replace(/\s+/g, ' ').trim();
+  if (!trimmed) return '';
+  const sentence = trimmed.split(/(?<=[.!?])\s+/)[0] ?? trimmed;
+  return sentence.trim();
+}
+
+/** Natural Story place line from whereAmI — never Map path / kind. */
+function naturalPlaceLine(
+  where: { name: string; description?: string } | null | undefined,
+): string | null {
+  if (!where?.name?.trim()) return null;
+  const name = where.name.trim();
+  const desc = where.description ? firstSentence(where.description) : '';
+  if (desc) return `At ${name}. ${desc}`;
+  return `At ${name}.`;
+}
 
 /** Strip leftover engine/debug crumbs if any older saves/providers leak them. */
 function playerFacingProse(raw: string): string {
@@ -51,6 +71,7 @@ function playerFacingProse(raw: string): string {
     .replace(/\boffline\s*=\s*(yes|no)/gi, '')
     .replace(/\s*\[[^\]]*DC[^\]]*\]/gi, '')
     .replace(/\s*\(You make your way:[^)]*\)\.?/gi, '')
+    .replace(/\s*You intended:\s*[^\n.]+\.?/gi, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
@@ -61,6 +82,7 @@ function recordsToBeats(records: StoryBeatRecord[]): StoryBeat[] {
     prose: playerFacingProse(r.prose),
     checkLine: r.checkLine,
     still: null,
+    placeLine: r.placeLine ?? null,
   }));
 }
 
@@ -74,6 +96,7 @@ function hydrateFromLogSummary(logSummary: string): StoryBeat[] {
       prose: playerFacingProse(line.replace(/^T\d+:\s*/i, '')),
       checkLine: null,
       still: null,
+      placeLine: null,
     }))
     .filter((b) => b.prose.length > 0);
 }
@@ -84,12 +107,18 @@ function toRecord(beat: StoryBeat): StoryBeatRecord {
     prose: beat.prose,
     checkLine: beat.checkLine,
     stillCacheKey: beat.still?.cacheKey ?? null,
+    placeLine: beat.placeLine,
   };
+}
+
+function previewLine(prose: string): string {
+  const one = firstSentence(prose) || prose.trim();
+  return one.length > 72 ? `${one.slice(0, 69)}…` : one;
 }
 
 /**
  * Story tab — player-facing narration + action input.
- * No shell/debug meta; location path lives on Map.
+ * Latest-focus journal; Map owns technical path/exits.
  */
 export function SceneScreen({
   campaign,
@@ -108,6 +137,7 @@ export function SceneScreen({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [action, setAction] = useState('');
+  const [earlierOpen, setEarlierOpen] = useState(false);
 
   const playNarrator = useCallback(() => {
     return createPlayNarrator({
@@ -126,10 +156,12 @@ export function SceneScreen({
         prose,
         checkLine: beat.check?.line ?? null,
         still: beat.still,
+        placeLine: naturalPlaceLine(beat.where),
       };
       const next = [...beatsRef.current, entry].slice(-MAX_STORY_BEATS);
       beatsRef.current = next;
       setBeats(next);
+      setEarlierOpen(false);
       onCampaignChange(
         withSession(beat.campaign, {
           storyBeats: next.map(toRecord),
@@ -219,7 +251,6 @@ export function SceneScreen({
       return;
     }
 
-    // Older saves: show log crumbs without regenerating a continue beat.
     if (campaign.session.turn > 0 || campaign.session.logSummary.trim()) {
       const fromLog = hydrateFromLogSummary(campaign.session.logSummary);
       if (fromLog.length > 0) {
@@ -228,14 +259,12 @@ export function SceneScreen({
         bootstrappedFor.current = campaign.id;
         return;
       }
-      // Progressed turn but empty log — do not auto-fire continue.
       bootstrappedFor.current = campaign.id;
       return;
     }
 
     bootstrappedFor.current = campaign.id;
     void runBeat({ beat: 'opening' });
-    // intentionally once per campaign id
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaign.id]);
 
@@ -253,6 +282,10 @@ export function SceneScreen({
       forceCheck: null,
     });
   };
+
+  const prior = beats.length > 1 ? beats.slice(0, -1) : [];
+  const latest = beats.length > 0 ? beats[beats.length - 1]! : null;
+  const headerPlace = latest?.placeLine ?? null;
 
   return (
     <View style={styles.flex}>
@@ -274,6 +307,9 @@ export function SceneScreen({
 
         <View style={styles.storyHeader}>
           <Text style={styles.storyTitle}>Story</Text>
+          {headerPlace ? (
+            <Text style={styles.placeLine}>{headerPlace}</Text>
+          ) : null}
         </View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -285,20 +321,53 @@ export function SceneScreen({
             </Text>
           </View>
         ) : (
-          beats.map((b) => (
-            <View key={b.id} style={styles.beatCard}>
-              <Text style={styles.prose}>{b.prose}</Text>
-              {b.checkLine ? (
-                <View style={styles.checkCard}>
-                  <Text style={styles.checkLabel}>Check</Text>
-                  <Text style={styles.checkLine}>{b.checkLine}</Text>
-                </View>
-              ) : null}
-              {b.still ? (
-                <StillFrame still={b.still} playerFacing caption="A vision" />
-              ) : null}
-            </View>
-          ))
+          <>
+            {prior.length > 0 ? (
+              <View style={styles.earlierWrap}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: earlierOpen }}
+                  onPress={() => setEarlierOpen((o) => !o)}
+                  style={({ pressed }) => [
+                    styles.earlierToggle,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.earlierLabel}>
+                    {earlierOpen ? 'Hide earlier' : 'Earlier'} ({prior.length})
+                  </Text>
+                </Pressable>
+                {earlierOpen
+                  ? prior.map((b) => (
+                      <View key={b.id} style={styles.earlierRow}>
+                        <Text style={styles.earlierPreview} numberOfLines={1}>
+                          {previewLine(b.prose)}
+                        </Text>
+                      </View>
+                    ))
+                  : null}
+              </View>
+            ) : null}
+
+            {latest ? (
+              <View style={styles.beatCard}>
+                <Text style={styles.prose}>{latest.prose}</Text>
+                {latest.checkLine ? (
+                  <View style={styles.checkCard}>
+                    <Text style={styles.checkLabel}>Check</Text>
+                    <Text style={styles.checkLine}>{latest.checkLine}</Text>
+                  </View>
+                ) : null}
+                {latest.still ? (
+                  <StillFrame
+                    still={latest.still}
+                    playerFacing
+                    caption="A vision"
+                  />
+                ) : null}
+              </View>
+            ) : null}
+          </>
         )}
 
         <Text style={styles.section}>What do you do?</Text>
@@ -392,6 +461,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 4,
   },
+  placeLine: {
+    color: theme.colors.textMuted,
+    fontSize: 14,
+    fontStyle: 'italic',
+    lineHeight: 20,
+  },
   error: {
     color: theme.colors.danger,
     marginBottom: theme.spacing.sm,
@@ -408,6 +483,35 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     fontSize: 15,
     fontStyle: 'italic',
+  },
+  earlierWrap: {
+    marginBottom: theme.spacing.sm,
+  },
+  earlierToggle: {
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    marginBottom: theme.spacing.xs,
+  },
+  earlierLabel: {
+    color: theme.colors.accent,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  earlierRow: {
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
+  },
+  earlierPreview: {
+    color: theme.colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
   },
   beatCard: {
     borderWidth: 1,

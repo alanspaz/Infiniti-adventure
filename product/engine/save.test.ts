@@ -133,6 +133,7 @@ describe('MemoryPersistStore save/load', () => {
             prose: 'The hearth glows.',
             checkLine: null,
             stillCacheKey: null,
+            placeLine: 'At The Copper Kettle. Warm lamps glow.',
           },
         ],
       },
@@ -140,6 +141,7 @@ describe('MemoryPersistStore save/load', () => {
     assert.equal(base.session.storyBeats?.length, 1);
     const again = parseCampaign(serializeCampaign(base));
     assert.equal(again.session.storyBeats?.[0]?.prose, 'The hearth glows.');
+    assert.match(again.session.storyBeats?.[0]?.placeLine ?? '', /Copper Kettle/);
   });
 
 });

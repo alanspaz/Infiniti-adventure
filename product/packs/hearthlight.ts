@@ -55,7 +55,16 @@ export const hearthlightPack: PlaystylePack = {
   contentStubs: {
     openingBeat:
       'You wake to the smell of woodsmoke and bread. Someone left a place for you by the hearth.',
+    continueBeat:
+      'Embers settle. Beyond the firelight, the road and the quiet still wait for your next kindness — or your next stand.',
+    customBeatPrefix: 'You act.',
+    customBeatFallback:
+      'The world answers in small mercies and clearer edges. What you chose leaves a mark the hearth will remember.',
     narratorSystemHint:
       'Narrate with warmth and agency. Celebrate small kindnesses. Danger is real but hope is earned.',
+    aloneClause:
+      'For now, you walk alone — and that is enough to begin.',
+    partyReadyOne: '{name} stands ready beside you.',
+    partyReadyMany: 'With you: {names}.',
   },
 };

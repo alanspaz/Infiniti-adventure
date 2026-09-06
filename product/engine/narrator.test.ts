@@ -23,7 +23,8 @@ describe('narrator provider', () => {
     assert.equal(result.providerKind, 'stub');
     assert.equal(result.source, 'pack-template');
     assert.match(result.prose, /woodsmoke|hearth/i);
-    assert.match(result.prose, /alone/i);
+    // Opening already implies solitude — aloneClause omitted to avoid doubling.
+    assert.doesNotMatch(result.prose, /walk alone/i);
   });
 
   it('stub narrateScene uses ash-ledger pack template', async () => {
@@ -90,7 +91,7 @@ describe('narrator provider', () => {
       partyNames: [],
     });
     assert.doesNotMatch(result.prose, /companion was added|auto-spawn/i);
-    assert.match(result.prose, /alone/i);
+    assert.match(result.prose, /alone|threshold/i);
   });
 
 
@@ -145,6 +146,35 @@ describe('narrator provider', () => {
       () => provider.narrateScene({ beat: 'opening' }),
       /reserved|not available/i,
     );
+  });
+
+  it('stub continue uses pack continueBeat', async () => {
+    resetPlaystylePackRegistry();
+    const provider = createNarratorProvider('stub');
+    const result = await provider.narrateScene({
+      playstylePackId: 'hearthlight',
+      beat: 'continue',
+      partyNames: [],
+    });
+    assert.equal(result.source, 'pack-template');
+    assert.match(result.prose, /Embers settle/i);
+    assert.match(result.prose, /walk alone/i);
+  });
+
+  it('stub custom does not echo raw playerAction', async () => {
+    resetPlaystylePackRegistry();
+    const provider = createNarratorProvider('stub');
+    const result = await provider.narrateScene({
+      playstylePackId: 'ash-ledger',
+      beat: 'custom',
+      playerAction: 'I climb the black spire of Neverwinter',
+      partyNames: [],
+    });
+    assert.equal(result.source, 'pack-template');
+    assert.doesNotMatch(result.prose, /You intended/i);
+    assert.doesNotMatch(result.prose, /Neverwinter|climb the black spire/i);
+    assert.match(result.prose, /press the moment|Scarce mercies/i);
+    assert.doesNotMatch(result.prose, /NSFW|explicit/i);
   });
 
   it('checkHint appears in stub prose', async () => {

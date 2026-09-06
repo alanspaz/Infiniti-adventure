@@ -13,6 +13,8 @@ export type StoryBeatRecord = {
   checkLine: string | null;
   /** Optional still cache key (URI resolved by UI cache). */
   stillCacheKey: string | null;
+  /** Natural place line for Story (never Map path). */
+  placeLine: string | null;
 };
 
 export type SessionState = {
@@ -73,6 +75,10 @@ function normalizeStoryBeats(
     prose: String(b.prose ?? ''),
     checkLine: b.checkLine == null ? null : String(b.checkLine),
     stillCacheKey: b.stillCacheKey == null ? null : String(b.stillCacheKey),
+    placeLine:
+      b.placeLine === undefined || b.placeLine === null
+        ? null
+        : String(b.placeLine),
   }));
 }
 
@@ -172,7 +178,10 @@ function isStoryBeatRecord(value: unknown): value is StoryBeatRecord {
     typeof b.id === 'string' &&
     typeof b.prose === 'string' &&
     (b.checkLine === null || typeof b.checkLine === 'string') &&
-    (b.stillCacheKey === null || typeof b.stillCacheKey === 'string')
+    (b.stillCacheKey === null || typeof b.stillCacheKey === 'string') &&
+    (b.placeLine === undefined ||
+      b.placeLine === null ||
+      typeof b.placeLine === 'string')
   );
 }
 

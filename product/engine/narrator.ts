@@ -90,11 +90,12 @@ export interface NarratorProvider {
 const CANNED_OPENING =
   'The road ahead is quiet. You stand alone at the threshold of the adventure, free to choose your next step.';
 
-const CANNED_CONTINUE =
-  'Time holds for a breath. The scene waits on your move — nothing forces a companion into your path.';
+/** Generic fallbacks — no shell/debug voice. */
+const FALLBACK_CONTINUE =
+  'The moment thins. Paths, voices, and unfinished business wait on what you do next.';
 
-const CANNED_CUSTOM =
-  'You take stock of what you can see and hear. The world answers only what you ask of it.';
+const FALLBACK_CUSTOM =
+  'What you chose settles into the world — doors, faces, and risks rearrange around it.';
 
 function completionFromProse(
   prose: string,
@@ -139,14 +140,29 @@ function applyVerbosity(
   return trimmed;
 }
 
-function partyClause(partyNames: string[] | undefined): string {
-  if (!partyNames || partyNames.length === 0) {
-    return 'You travel alone for now.';
+function partyClause(
+  partyNames: string[] | undefined,
+  pack: ReturnType<typeof tryLoadPlaystylePack>,
+  beat: NarratorBeat,
+): string | null {
+  const stubs = pack?.contentStubs;
+  const names = (partyNames ?? []).map((n) => n.trim()).filter(Boolean);
+
+  if (names.length === 0) {
+    // Opening pack beats already imply solitude — skip aloneClause to avoid doubling.
+    if (beat === 'opening' && stubs?.openingBeat) {
+      return null;
+    }
+    return stubs?.aloneClause?.trim() || null;
   }
-  if (partyNames.length === 1) {
-    return `${partyNames[0]} stands ready.`;
+  if (names.length === 1) {
+    const template =
+      stubs?.partyReadyOne?.trim() || '{name} stands ready beside you.';
+    return template.replace(/\{name\}/g, names[0]!);
   }
-  return `With you: ${partyNames.join(', ')}.`;
+  const template =
+    stubs?.partyReadyMany?.trim() || 'With you: {names}.';
+  return template.replace(/\{names\}/g, names.join(', '));
 }
 
 function resolveStubProse(request: NarratorSceneRequest): {
@@ -155,25 +171,42 @@ function resolveStubProse(request: NarratorSceneRequest): {
 } {
   const beat = request.beat ?? 'opening';
   const pack = tryLoadPlaystylePack(request.playstylePackId);
+  const stubs = pack?.contentStubs;
   let body: string;
   let source: NarratorSceneSource = 'canned';
 
-  if (beat === 'opening' && pack?.contentStubs.openingBeat) {
-    body = pack.contentStubs.openingBeat;
+  if (beat === 'opening' && stubs?.openingBeat) {
+    body = stubs.openingBeat;
     source = 'pack-template';
   } else if (beat === 'continue') {
-    body = CANNED_CONTINUE;
-  } else if (beat === 'custom' && request.playerAction?.trim()) {
-    body = `${CANNED_CUSTOM} You intended: ${request.playerAction.trim()}`;
+    if (stubs?.continueBeat) {
+      body = stubs.continueBeat;
+      source = 'pack-template';
+    } else {
+      body = FALLBACK_CONTINUE;
+    }
+  } else if (beat === 'custom') {
+    // Never echo raw playerAction into player-facing prose.
+    if (stubs?.customBeatFallback) {
+      const prefix = stubs.customBeatPrefix?.trim();
+      body = prefix
+        ? `${prefix} ${stubs.customBeatFallback}`
+        : stubs.customBeatFallback;
+      source = 'pack-template';
+    } else {
+      body = FALLBACK_CUSTOM;
+    }
   } else if (beat === 'opening') {
     body = CANNED_OPENING;
   } else {
-    body = CANNED_CUSTOM;
+    body = FALLBACK_CUSTOM;
   }
 
   // Player-facing stub prose only — keep session logSummary / turn / raw
   // location ids out of the narrative (they remain available to remote prompts).
-  const bits = [body, partyClause(request.partyNames)];
+  const bits: string[] = [body];
+  const party = partyClause(request.partyNames, pack, beat);
+  if (party) bits.push(party);
   if (request.checkHint?.trim()) {
     bits.push(request.checkHint.trim());
   }

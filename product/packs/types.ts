@@ -25,10 +25,20 @@ export type PackResources = {
   restHarshness: RestHarshness;
 };
 
-/** Data-only stubs for later narrator / identity tickets. */
+/** Data-only stubs for narrator / identity (Narrative-owned wording). */
 export type PackContentStubs = {
   openingBeat: string;
+  continueBeat: string;
+  /** Optional short lead-in before custom fallback (not used to echo actions). */
+  customBeatPrefix: string;
+  /** In-world consequence prose for custom beats — never echoes raw player action. */
+  customBeatFallback: string;
   narratorSystemHint: string;
+  aloneClause: string;
+  /** Use `{name}` placeholder. */
+  partyReadyOne: string;
+  /** Use `{names}` placeholder. */
+  partyReadyMany: string;
 };
 
 export type PlaystylePack = {

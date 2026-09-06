@@ -41,6 +41,8 @@ describe('playstyle packs', () => {
     assert.match(h.tone.summary, /warm/i);
     assert.ok(h.tone.imageStyle.length > 0);
     assert.ok(h.contentStubs.openingBeat.length > 0);
+    assert.ok(h.contentStubs.continueBeat.length > 0);
+    assert.ok(h.contentStubs.customBeatFallback.length > 0);
 
     const a = loadPlaystylePack('ash-ledger');
     assert.equal(a.displayName, 'Ash Ledger');
