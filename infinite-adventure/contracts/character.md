@@ -17,7 +17,7 @@ On-device character model for Infinite Adventure. Pure data + pure functions. No
 | `className` | string | Generic class label (not WotC product names) |
 | `age` | number \| null | Optional; years |
 | `originMode` | `'backstory' \| 'memory-loss'` | How origin is framed |
-| `sealedBackstorySeed` | string \| null | Optional; sealed until revealed by play |
+| `sealedBackstorySeed` | string \| null | Optional; sealed until revealed by play. On **memory-loss** create, generated on-device (see `contracts/identity.md`) |
 
 ## Ability scores
 Six abilities, classic SRD shape with **generic names**:
@@ -46,4 +46,7 @@ Given ability scores and optional level (default 1):
 Class may supply `hitDie` (4, 6, 8, 10, or 12). Default `8`.
 
 ## Non-goals (this contract)
-Dice rolling UI, save serialization format, narrator prompts, equipment lists, official monster/stat blocks.
+Save serialization format, narrator prompts, equipment lists, official monster/stat blocks. Identity screens: `contracts/identity.md`. Dice rolling: `contracts/dice.md`.
+
+## UI note
+App surface: `CharacterSheetScreen` shows active campaign PC + `deriveStats`; empty-state when no campaign or empty party.

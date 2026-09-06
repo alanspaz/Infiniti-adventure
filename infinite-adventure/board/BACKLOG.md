@@ -1,13 +1,10 @@
 # Backlog
 
-## T-004 — Dice / resolution
-Pure engine + UI hook for ability checks and contested rolls. Generic SRD-shaped math; no “5e” labeling.
+## Next
+- Stills image UI / cache persistence (provider stub + Scene “show me” exist)
+- Remote narrator base URL in settings + polish (HTTP optional when configured)
+- Companion emotion / party UX (only if party features are prioritized)
 
-## T-005 — Save system
-On-device save/load of adventure state (character, party, progress). Offline-first.
-
-## T-006 — Playstyle packs
-Pack metadata and loading for **Hearthlight** and **Ash Ledger** (tone/prompts/rules flavor).
-
-## T-006a — Identity UI
-Screens to set description, class, age, origin mode (backstory | memory-loss), optional sealed backstory seed.
+## Notes
+T-012 Scene / adventure loop is done — core offline loop is playable with stubs. See board/DONE.md.
+Suggested pause point: form playable offline; device Expo playtest can resume later.

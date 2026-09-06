@@ -8,6 +8,6 @@
     "resolveJsonModule": true,
     "skipLibCheck": true
   },
-  "include": ["App.tsx", "src/**/*", "engine/**/*"],
+  "include": ["App.tsx", "src/**/*", "engine/**/*", "packs/**/*"],
   "exclude": ["node_modules", "engine/**/*.test.ts"]
 }

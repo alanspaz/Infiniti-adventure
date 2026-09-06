@@ -10,42 +10,32 @@ Solo phone RPG with an AI narrator. Rules, dice, maps, and saves on-device; ask 
 - Expo ~57, React 19.2, React Native 0.86
 - TypeScript
 - Settings via React Context + expo-secure-store (in-memory fallback)
-- Pure TS game engine under `product/engine/`
+- Campaign saves via PersistStore: MemoryPersistStore (tests) + AsyncStorage adapter (runtime; memory fallback)
+- Pure TS game engine under `product/engine/` (character, dice, save, playstyle packs, identity create, narrator, maps/whereAmI, stills stub, **scene adventure loop**)
+- Playstyle pack content under `product/packs/` (Hearthlight, Ash Ledger)
+- Narrator: stub (offline) | remote (optional HTTP when configured; stub fallback) | on-device (reserved); thin `src/ai` factory
+- Maps: starter Embervale graph; whereAmI path/exits on-device
+- Stills: stub placeholder/cacheKey; remote not configured; Scene “show me” uses stub
+- App screens: Home (continue → Scene), Settings, Pack select, Identity, **Scene play loop**, Map (whereAmI), Character sheet, Dice
 
 ## Run locally
 
-From `product/`:
+From product/: install, expo start.
 
-```
-cd product
-npm install
-npx expo start
-```
-
-```
-cd product
-npx tsc --noEmit
-npm test
-```
+Backend verification (no device): tsc --noEmit, test suite, smoke script.
 
 ## Upload to GitHub
 
-Upload this project (exclude `product/node_modules`) to the Infiniti-adventure repo.
-
-1. Initialize git and commit the tree
-2. Add remote origin for alanspaz/Infiniti-adventure
-3. Push the main branch
-
-Or use the GitHub web UI zip upload.
+Exclude product/node_modules and product/.expo. Handoff zip is flat at repo root.
 
 ## Docs
 
-- `PRODUCT.md` — locked product brief
-- `CREW.md` — next ticket pointer (**T-004**)
-- `board/` — backlog / done
-- `contracts/character.md` — character sheet contract
-- `tickets/` — ticket records
+- PRODUCT.md — locked product brief
+- CREW.md — next ticket pointer (stills UI / remote settings)
+- board/ — backlog / done
+- contracts/ — character, dice, save, playstyle, identity, narrator, map, stills, **scene**
+- tickets/ — ticket records
 
 ## Theme
 
-Background `#140f0c`, accent `#d4a054`. Portrait-first; tablets allowed.
+Background #140f0c, accent #d4a054. Portrait-first; tablets allowed.
