@@ -1,5 +1,13 @@
 # Done
 
+## T-017 — Story polish (Sprint A P0)
+- Story stays mounted across PlayShell tabs; storyBeats hydrate on Continue
+- No Story location crumb; Map owns path/exits
+- Check/travel out of narrator prose (structured UI only)
+- "Continue the tale" replaces "New beat"
+
+# Done
+
 ## T-016 — Play shell UI polish
 - PlayShell tabs Story Quest Character Companions Items Map Settings
 - Story player-facing only; Map holds location path

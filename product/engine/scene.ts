@@ -316,8 +316,7 @@ export async function resolveSceneBeat(
     travel = detectTravelSuggestion(action, graph, locationId);
   }
 
-  const checkHint = check ? `Check ${check.line}.` : undefined;
-
+  // Check / travel stay structured (UI cards / Map). Do not inject into prose.
   const narratorResult = await narrator.narrateScene({
     playstylePackId: input.campaign.playstylePackId,
     locationId,
@@ -327,17 +326,9 @@ export async function resolveSceneBeat(
     logSummary: input.campaign.session.logSummary || undefined,
     verbosity,
     beat,
-    checkHint,
   });
 
-  let prose = narratorResult.prose;
-  if (check) {
-    prose = `${prose}\n\n[${check.line}]`;
-  }
-  if (travel) {
-    const dest = getMapNode(graph, travel.toNodeId);
-    prose = `${prose}\n\n(You make your way: ${travel.label}${dest ? ` → ${dest.name}` : ''}.)`;
-  }
+  const prose = narratorResult.prose;
 
   const nextTurn = nextTurnForBeat(input.campaign.session.turn, action, beat);
   const nextLocation = travel ? travel.toNodeId : locationId;

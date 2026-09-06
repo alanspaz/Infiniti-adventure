@@ -21,6 +21,7 @@ type Props = {
 /**
  * In-campaign play shell: top tabs for Story / Quest / Character /
  * Companions / Items / Map / Settings. Home stays the entry point.
+ * Story stays mounted across tab switches so the log is not wiped.
  */
 export function PlayShell({ campaign, onCampaignChange, onLeave }: Props) {
   const [tab, setTab] = useState<PlayTabId>('story');
@@ -47,13 +48,16 @@ export function PlayShell({ campaign, onCampaignChange, onLeave }: Props) {
       <PlayTabBar active={tab} onChange={setTab} />
 
       <View style={styles.body}>
-        {tab === 'story' ? (
+        <View
+          style={[styles.panel, tab !== 'story' && styles.panelHidden]}
+          pointerEvents={tab === 'story' ? 'auto' : 'none'}
+        >
           <SceneScreen
             campaign={campaign}
             onCampaignChange={onCampaignChange}
             embedded
           />
-        ) : null}
+        </View>
         {tab === 'quest' ? <QuestTab campaign={campaign} /> : null}
         {tab === 'character' ? (
           <CharacterSheetScreen campaign={campaign} embedded />
@@ -117,6 +121,12 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
+  },
+  panel: {
+    flex: 1,
+  },
+  panelHidden: {
+    display: 'none',
   },
   pressed: {
     opacity: 0.85,

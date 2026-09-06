@@ -7,11 +7,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import type { CampaignSave } from '../../engine';
+import type { CampaignSave, StoryBeatRecord } from '../../engine';
 import {
   createSeededRng,
   createStarterMap,
   resolveSceneBeat,
+  withSession,
   type SceneBeatResult,
   type StillResult,
 } from '../../engine';
@@ -35,9 +36,10 @@ type StoryBeat = {
   id: string;
   prose: string;
   checkLine: string | null;
-  placeName: string | null;
   still: StillResult | null;
 };
+
+const MAX_STORY_BEATS = 40;
 
 /** Strip leftover engine/debug crumbs if any older saves/providers leak them. */
 function playerFacingProse(raw: string): string {
@@ -47,13 +49,47 @@ function playerFacingProse(raw: string): string {
     .replace(/\s*Turn\s+\d+\.?/gi, '')
     .replace(/\bsource\s*=\s*\w+/gi, '')
     .replace(/\boffline\s*=\s*(yes|no)/gi, '')
+    .replace(/\s*\[[^\]]*DC[^\]]*\]/gi, '')
+    .replace(/\s*\(You make your way:[^)]*\)\.?/gi, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
 
+function recordsToBeats(records: StoryBeatRecord[]): StoryBeat[] {
+  return records.map((r) => ({
+    id: r.id,
+    prose: playerFacingProse(r.prose),
+    checkLine: r.checkLine,
+    still: null,
+  }));
+}
+
+function hydrateFromLogSummary(logSummary: string): StoryBeat[] {
+  return logSummary
+    .split(/\s*\|\s*/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, i) => ({
+      id: `log-${i}-${line.slice(0, 24)}`,
+      prose: playerFacingProse(line.replace(/^T\d+:\s*/i, '')),
+      checkLine: null,
+      still: null,
+    }))
+    .filter((b) => b.prose.length > 0);
+}
+
+function toRecord(beat: StoryBeat): StoryBeatRecord {
+  return {
+    id: beat.id,
+    prose: beat.prose,
+    checkLine: beat.checkLine,
+    stillCacheKey: beat.still?.cacheKey ?? null,
+  };
+}
+
 /**
  * Story tab — player-facing narration + action input.
- * No shell/debug meta; location breadcrumb lives on Map.
+ * No shell/debug meta; location path lives on Map.
  */
 export function SceneScreen({
   campaign,
@@ -65,13 +101,13 @@ export function SceneScreen({
   const map = useMemo(() => createStarterMap(), []);
   const stillProvider = useMemo(() => createAppStillProvider(), []);
   const logRef = useRef<ScrollView>(null);
+  const bootstrappedFor = useRef<string | null>(null);
+  const beatsRef = useRef<StoryBeat[]>([]);
 
   const [beats, setBeats] = useState<StoryBeat[]>([]);
-  const [placeName, setPlaceName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [action, setAction] = useState('');
-  const [started, setStarted] = useState(false);
 
   const playNarrator = useCallback(() => {
     return createPlayNarrator({
@@ -85,19 +121,20 @@ export function SceneScreen({
   const applyBeat = useCallback(
     (beat: SceneBeatResult) => {
       const prose = playerFacingProse(beat.prose);
-      const place = beat.where?.name ?? null;
-      setPlaceName(place);
-      setBeats((prev) => [
-        ...prev,
-        {
-          id: `${beat.campaign.session.turn}-${prev.length}-${Date.now()}`,
-          prose,
-          checkLine: beat.check?.line ?? null,
-          placeName: place,
-          still: beat.still,
-        },
-      ]);
-      onCampaignChange(beat.campaign);
+      const entry: StoryBeat = {
+        id: `${beat.campaign.session.turn}-${Date.now()}`,
+        prose,
+        checkLine: beat.check?.line ?? null,
+        still: beat.still,
+      };
+      const next = [...beatsRef.current, entry].slice(-MAX_STORY_BEATS);
+      beatsRef.current = next;
+      setBeats(next);
+      onCampaignChange(
+        withSession(beat.campaign, {
+          storyBeats: next.map(toRecord),
+        }),
+      );
       requestAnimationFrame(() => {
         logRef.current?.scrollToEnd({ animated: true });
       });
@@ -115,7 +152,7 @@ export function SceneScreen({
       setBusy(true);
       setError(null);
       try {
-        const { provider, fallbackNote: _note } = playNarrator();
+        const { provider } = playNarrator();
         let narrator = provider;
 
         const seed =
@@ -159,7 +196,6 @@ export function SceneScreen({
         }
 
         applyBeat(result);
-        setStarted(true);
         if (opts.playerAction) setAction('');
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -171,13 +207,35 @@ export function SceneScreen({
   );
 
   useEffect(() => {
-    if (started || busy) return;
-    const beat =
-      campaign.session.turn > 0 || campaign.session.logSummary
-        ? 'continue'
-        : 'opening';
-    void runBeat({ beat });
-    // intentionally once on mount / campaign id
+    if (bootstrappedFor.current === campaign.id) return;
+    if (busy) return;
+
+    const saved = campaign.session.storyBeats ?? [];
+    if (saved.length > 0) {
+      const hydrated = recordsToBeats(saved);
+      beatsRef.current = hydrated;
+      setBeats(hydrated);
+      bootstrappedFor.current = campaign.id;
+      return;
+    }
+
+    // Older saves: show log crumbs without regenerating a continue beat.
+    if (campaign.session.turn > 0 || campaign.session.logSummary.trim()) {
+      const fromLog = hydrateFromLogSummary(campaign.session.logSummary);
+      if (fromLog.length > 0) {
+        beatsRef.current = fromLog;
+        setBeats(fromLog);
+        bootstrappedFor.current = campaign.id;
+        return;
+      }
+      // Progressed turn but empty log — do not auto-fire continue.
+      bootstrappedFor.current = campaign.id;
+      return;
+    }
+
+    bootstrappedFor.current = campaign.id;
+    void runBeat({ beat: 'opening' });
+    // intentionally once per campaign id
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaign.id]);
 
@@ -216,9 +274,6 @@ export function SceneScreen({
 
         <View style={styles.storyHeader}>
           <Text style={styles.storyTitle}>Story</Text>
-          {placeName ? (
-            <Text style={styles.placeLine}>You are at {placeName}</Text>
-          ) : null}
         </View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -288,7 +343,7 @@ export function SceneScreen({
               busy && styles.disabled,
             ]}
           >
-            <Text style={styles.secondaryLabel}>New beat</Text>
+            <Text style={styles.secondaryLabel}>Continue the tale</Text>
           </Pressable>
 
           <Pressable
@@ -336,11 +391,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     marginBottom: 4,
-  },
-  placeLine: {
-    color: theme.colors.textMuted,
-    fontSize: 14,
-    fontStyle: 'italic',
   },
   error: {
     color: theme.colors.danger,

@@ -6,6 +6,15 @@ import {
 
 export const SAVE_SCHEMA_VERSION = 1 as const;
 
+/** Player-facing story log entry persisted with the campaign. */
+export type StoryBeatRecord = {
+  id: string;
+  prose: string;
+  checkLine: string | null;
+  /** Optional still cache key (URI resolved by UI cache). */
+  stillCacheKey: string | null;
+};
+
 export type SessionState = {
   /** Non-negative turn counter. */
   turn: number;
@@ -15,6 +24,11 @@ export type SessionState = {
   logSummary: string;
   /** Optional seed for reproducible dice. */
   rngSeed: number | null;
+  /**
+   * Player-facing story beats for Continue hydrate.
+   * Optional for older saves; empty when omitted.
+   */
+  storyBeats?: StoryBeatRecord[];
 };
 
 export type CampaignFlagValue = boolean | number | string;
@@ -47,14 +61,31 @@ function isoNow(): string {
   return new Date().toISOString();
 }
 
+const MAX_STORY_BEATS = 40;
+
+function normalizeStoryBeats(
+  value: StoryBeatRecord[] | undefined,
+): StoryBeatRecord[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return [];
+  return value.slice(-MAX_STORY_BEATS).map((b) => ({
+    id: String(b.id),
+    prose: String(b.prose ?? ''),
+    checkLine: b.checkLine == null ? null : String(b.checkLine),
+    stillCacheKey: b.stillCacheKey == null ? null : String(b.stillCacheKey),
+  }));
+}
+
 export function createEmptySession(
   patch?: Partial<SessionState>,
 ): SessionState {
+  const storyBeats = normalizeStoryBeats(patch?.storyBeats);
   return {
     turn: Math.max(0, Math.floor(patch?.turn ?? 0)),
     locationId: patch?.locationId ?? null,
     logSummary: patch?.logSummary ?? '',
     rngSeed: patch?.rngSeed === undefined ? null : patch.rngSeed,
+    ...(storyBeats !== undefined ? { storyBeats } : {}),
   };
 }
 
@@ -134,15 +165,36 @@ function isCharacterSheet(value: unknown): value is CharacterSheet {
   );
 }
 
+function isStoryBeatRecord(value: unknown): value is StoryBeatRecord {
+  if (!value || typeof value !== 'object') return false;
+  const b = value as Record<string, unknown>;
+  return (
+    typeof b.id === 'string' &&
+    typeof b.prose === 'string' &&
+    (b.checkLine === null || typeof b.checkLine === 'string') &&
+    (b.stillCacheKey === null || typeof b.stillCacheKey === 'string')
+  );
+}
+
 function isSessionState(value: unknown): value is SessionState {
   if (!value || typeof value !== 'object') return false;
   const s = value as Record<string, unknown>;
-  return (
-    typeof s.turn === 'number' &&
-    (s.locationId === null || typeof s.locationId === 'string') &&
-    typeof s.logSummary === 'string' &&
-    (s.rngSeed === null || typeof s.rngSeed === 'number')
-  );
+  if (
+    !(
+      typeof s.turn === 'number' &&
+      (s.locationId === null || typeof s.locationId === 'string') &&
+      typeof s.logSummary === 'string' &&
+      (s.rngSeed === null || typeof s.rngSeed === 'number')
+    )
+  ) {
+    return false;
+  }
+  if (s.storyBeats !== undefined) {
+    if (!Array.isArray(s.storyBeats) || !s.storyBeats.every(isStoryBeatRecord)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /** Parse and validate a campaign JSON string. */
@@ -195,7 +247,7 @@ export function parseCampaign(json: string): CampaignSave {
     updatedAt: o.updatedAt,
     playstylePackId: o.playstylePackId as string | null,
     party: o.party as CharacterSheet[],
-    session: o.session,
+    session: createEmptySession(o.session as SessionState),
     flags: { ...(o.flags as Record<string, CampaignFlagValue>) },
   };
 }

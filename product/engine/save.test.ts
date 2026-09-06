@@ -121,4 +121,25 @@ describe('MemoryPersistStore save/load', () => {
     await deleteCampaign(store, 'p1');
     assert.equal(await loadCampaign(store, 'p1'), null);
   });
+  it('round-trips optional storyBeats on session', () => {
+    const base = createCampaign({
+      id: 'story-log',
+      session: {
+        turn: 2,
+        logSummary: 'T2: look around',
+        storyBeats: [
+          {
+            id: 'b1',
+            prose: 'The hearth glows.',
+            checkLine: null,
+            stillCacheKey: null,
+          },
+        ],
+      },
+    });
+    assert.equal(base.session.storyBeats?.length, 1);
+    const again = parseCampaign(serializeCampaign(base));
+    assert.equal(again.session.storyBeats?.[0]?.prose, 'The hearth glows.');
+  });
+
 });

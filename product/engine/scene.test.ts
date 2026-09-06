@@ -97,7 +97,10 @@ describe('scene adventure loop', () => {
     assert.ok(beat.check);
     assert.equal(beat.check!.suggestion.ability, 'wisdom');
     assert.equal(beat.campaign.session.turn, 2);
-    assert.match(beat.prose, /search|perception|wisdom|DC/i);
+    // Prose stays narrator-only; check line is structured for UI cards.
+    assert.doesNotMatch(beat.prose, /\[[^\]]*DC/i);
+    assert.doesNotMatch(beat.prose, /You make your way/i);
+    assert.match(beat.check!.line, /perception|wisdom|DC/i);
     assert.ok(beat.campaign.session.logSummary.length > 0);
   });
 
@@ -117,6 +120,7 @@ describe('scene adventure loop', () => {
     assert.equal(beat.campaign.session.locationId, 'interior.kettle-cellar');
     assert.ok(beat.where);
     assert.match(beat.where!.path, /Cellar|Copper|Ember/i);
+    assert.doesNotMatch(beat.prose, /You make your way/i);
   });
 
   it('showMe returns stub still placeholder offline', async () => {

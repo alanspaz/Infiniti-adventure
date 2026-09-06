@@ -16,7 +16,7 @@ Solo phone RPG with an AI narrator. Rules, dice, maps, and saves on-device; ask 
 - Narrator: stub (offline) | remote (OpenAI-compatible base URL + key; HTTP when configured; stub fallback) | on-device (reserved); thin `src/ai` factory
 - Maps: starter Embervale graph; whereAmI path/exits on-device
 - Stills: stub placeholder/cacheKey + device PersistStore cache; StillFrame UI; Stills gallery; Scene “show me”; remote not configured
-- App screens: Home (Continue / New campaign), Settings, Pack select, Identity, **PlayShell tabs** (Story / Quest / Character / Companions / Items / Map / Settings), Dice, Stills
+- App screens: Home (Continue / New campaign), Settings, Pack select, Identity, **PlayShell tabs** (Story stays mounted; Quest / Character / Companions / Items / Map / Settings), Dice, Stills
 
 ## Run locally
 

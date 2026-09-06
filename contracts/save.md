@@ -30,6 +30,7 @@ Top-level document written to durable storage.
 | `locationId` | string \| null | Current place id (maps) |
 | `logSummary` | string | Short offline-safe summary of recent events |
 | `rngSeed` | number \| null | Optional seed for reproducible dice |
+| `storyBeats` | `StoryBeatRecord[]` (optional) | Player-facing Story log for Continue hydrate; capped |
 
 ## Persistence interface
 ```ts

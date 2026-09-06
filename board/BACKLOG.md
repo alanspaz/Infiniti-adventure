@@ -1,9 +1,10 @@
 # Backlog
 
 ## Next
-- Companion emotion / party UX (only if party features are prioritized)
-- Device Expo playtest (re-run after play-shell polish)
+- T-018 Map travel ↔ Story sync (optional narrate on travel)
+- T-019 Fold Dice/Stills into PlayShell; soften Home persist chrome
+- T-020 Device Expo playtest pass after 017–019
+- Companion emotion / party UX (hold — not Sprint A)
 
 ## Notes
-T-016 play shell UI polish addresses Expo Go feedback (no debug Story chrome; Map for location path; tabbed play). See board/DONE.md.
-Suggested pause point: core playable offline + optional remote narrator; device Expo playtest can resume.
+T-017 Story polish shipped. See board/DONE.md.

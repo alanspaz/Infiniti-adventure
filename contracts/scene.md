@@ -21,3 +21,8 @@ Settings `short` | `standard` | `lush` passed into narrator.
 
 ## Non-goals
 Companion emotion system (not present yet), NSFW, Expo device playtest, vendor brand lock-in.
+
+## Player-facing prose (T-017)
+- Narrator `prose` must not include bracketed check lines or travel parentheticals.
+- Check and travel remain structured fields; Story UI shows check cards; Map owns path/exits.
+- `session.storyBeats` persists Story log for Continue hydrate; PlayShell keeps Story mounted across tabs.
