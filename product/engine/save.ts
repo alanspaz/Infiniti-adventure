@@ -3,6 +3,12 @@ import {
   PersistStore,
   campaignSaveKey,
 } from './persist';
+import {
+  createEmptyWorld,
+  isCampaignWorldState,
+  normalizeWorld,
+  type CampaignWorldState,
+} from './campaignState';
 
 export const SAVE_SCHEMA_VERSION = 1 as const;
 
@@ -49,6 +55,11 @@ export type CampaignSave = {
   party: Party;
   session: SessionState;
   flags: Record<string, CampaignFlagValue>;
+  /**
+   * Optional world slice (inventory, quests, combat, storyMeta, playPrefs).
+   * Omitted on older saves; normalized on load.
+   */
+  world?: CampaignWorldState;
 };
 
 export type CreateCampaignInput = {
@@ -59,6 +70,7 @@ export type CreateCampaignInput = {
   party?: Party;
   session?: Partial<SessionState>;
   flags?: Record<string, CampaignFlagValue>;
+  world?: Partial<CampaignWorldState>;
 };
 
 function isoNow(): string {
@@ -115,6 +127,7 @@ export function createCampaign(input: CreateCampaignInput): CampaignSave {
     party: input.party ? [...input.party] : [],
     session: createEmptySession(input.session),
     flags: { ...(input.flags ?? {}) },
+    world: createEmptyWorld(input.world),
   };
 }
 
@@ -139,6 +152,32 @@ export function withSession(
   return touchCampaign({
     ...campaign,
     session: createEmptySession({ ...campaign.session, ...session }),
+  });
+}
+
+export function withWorld(
+  campaign: CampaignSave,
+  world: Partial<CampaignWorldState>,
+): CampaignSave {
+  return touchCampaign({
+    ...campaign,
+    world: createEmptyWorld({
+      ...normalizeWorld(campaign.world),
+      ...world,
+      inventory: world.inventory
+        ? world.inventory
+        : normalizeWorld(campaign.world).inventory,
+      quests: world.quests ?? normalizeWorld(campaign.world).quests,
+      combat: world.combat
+        ? { ...normalizeWorld(campaign.world).combat, ...world.combat }
+        : normalizeWorld(campaign.world).combat,
+      storyMeta: world.storyMeta
+        ? { ...normalizeWorld(campaign.world).storyMeta, ...world.storyMeta }
+        : normalizeWorld(campaign.world).storyMeta,
+      playPrefs: world.playPrefs
+        ? { ...normalizeWorld(campaign.world).playPrefs, ...world.playPrefs }
+        : normalizeWorld(campaign.world).playPrefs,
+    }),
   });
 }
 
@@ -256,6 +295,11 @@ export function parseCampaign(json: string): CampaignSave {
       throw new Error('Invalid flag value type');
     }
   }
+  if (o.world !== undefined && o.world !== null) {
+    if (!isCampaignWorldState(o.world)) {
+      throw new Error('Invalid world');
+    }
+  }
 
   return {
     schemaVersion: SAVE_SCHEMA_VERSION,
@@ -267,6 +311,11 @@ export function parseCampaign(json: string): CampaignSave {
     party: o.party as CharacterSheet[],
     session: createEmptySession(o.session as SessionState),
     flags: { ...(o.flags as Record<string, CampaignFlagValue>) },
+    world: normalizeWorld(
+      o.world === undefined || o.world === null
+        ? undefined
+        : (o.world as CampaignWorldState),
+    ),
   };
 }
 

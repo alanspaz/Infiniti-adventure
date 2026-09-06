@@ -1,18 +1,15 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import type { CampaignSave } from '../../engine';
+import { useCampaignState } from '../campaign';
 import { theme } from '../theme';
 
-type Props = {
-  campaign: CampaignSave;
-};
-
 /**
- * Companions panel — empty-party-friendly; never auto-spawns companions.
- * Party[0] is treated as the active PC; anyone after that is a companion.
+ * Companions panel — empty-party-friendly; never auto-spawns.
+ * Reads CampaignState.companions only (party.slice(1)).
  */
-export function CompanionsTab({ campaign }: Props) {
-  const companions = campaign.party.slice(1);
+export function CompanionsTab() {
+  const { state } = useCampaignState();
+  const companions = Array.isArray(state.companions) ? state.companions : [];
 
   return (
     <ScrollView
@@ -20,7 +17,6 @@ export function CompanionsTab({ campaign }: Props) {
       contentContainerStyle={styles.root}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.title}>Companions</Text>
       <Text style={styles.hint}>
         Companions are never added for you. You travel alone unless you form a
         party.
@@ -52,16 +48,10 @@ export function CompanionsTab({ campaign }: Props) {
 }
 
 const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: theme.colors.background },
+  scroll: { flex: 1, backgroundColor: theme.colors.surface },
   root: {
     padding: theme.spacing.lg,
     paddingBottom: theme.spacing.xl,
-  },
-  title: {
-    color: theme.colors.accent,
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: theme.spacing.sm,
   },
   hint: {
     color: theme.colors.textMuted,
@@ -72,7 +62,7 @@ const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
     borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.colors.background,
     borderRadius: 12,
     padding: theme.spacing.md,
     marginBottom: theme.spacing.sm,

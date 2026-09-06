@@ -19,6 +19,12 @@ export const appImages = {
   iconCompanions: require('../assets/icons/companions.png') as ImageSourcePropType,
   iconMap: require('../assets/icons/map.png') as ImageSourcePropType,
   iconSettings: require('../assets/icons/settings.png') as ImageSourcePropType,
+  /** Combat rail action chips (UI-01 Artist). */
+  combatAttack: require('../assets/icons/attack.png') as ImageSourcePropType,
+  combatDefend: require('../assets/icons/defend.png') as ImageSourcePropType,
+  combatDodge: require('../assets/icons/dodge.png') as ImageSourcePropType,
+  combatCast: require('../assets/icons/cast.png') as ImageSourcePropType,
+  combatUseItem: require('../assets/icons/use-item.png') as ImageSourcePropType,
 } as const;
 
 const PANEL_ICONS: Record<string, ImageSourcePropType> = {

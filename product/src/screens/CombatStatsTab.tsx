@@ -1,24 +1,23 @@
 import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import type { CampaignSave } from '../../engine';
 import { ABILITY_KEYS, deriveStats } from '../../engine';
+import { useCampaignState } from '../campaign';
 import { theme } from '../theme';
-
-type Props = {
-  campaign: CampaignSave;
-};
 
 function formatMod(n: number): string {
   return n >= 0 ? `+${n}` : `${n}`;
 }
 
 /**
- * Layout-only combat / stats panel (Base44). Uses engine derived stats.
- * No combat system yet — read-only snapshot of the active PC.
+ * Combat / stats panel — views of CampaignState.combat + character.
+ * HP matches CombatRail (same slice).
  */
-export function CombatStatsTab({ campaign }: Props) {
-  const pc = campaign.party.length > 0 ? campaign.party[0]! : null;
+export function CombatStatsTab() {
+  const { state } = useCampaignState();
+  const pc = state.character;
   const derived = useMemo(() => (pc ? deriveStats(pc) : null), [pc]);
+  const hp = state.combat.hp;
+  const maxHp = state.combat.maxHp ?? derived?.maxHitPoints ?? null;
 
   return (
     <ScrollView
@@ -26,9 +25,8 @@ export function CombatStatsTab({ campaign }: Props) {
       contentContainerStyle={styles.root}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.title}>Combat</Text>
       <Text style={styles.hint}>
-        Readiness at a glance. Full rules live in the engine — nothing invented here.
+        Readiness at a glance. Actions on the combat rail write this same slice.
       </Text>
 
       {!pc || !derived ? (
@@ -45,10 +43,18 @@ export function CombatStatsTab({ campaign }: Props) {
             <Text style={styles.meta}>
               {pc.className} · Level {pc.level}
             </Text>
+            {state.combat.lastAction ? (
+              <Text style={styles.last}>Stance: {state.combat.lastAction}</Text>
+            ) : null}
           </View>
           <View style={styles.statRow}>
+            <Stat
+              label="HP"
+              value={
+                hp == null || maxHp == null ? '—' : `${hp}/${maxHp}`
+              }
+            />
             <Stat label="Armor" value={String(derived.armorClass)} />
-            <Stat label="Max HP" value={String(derived.maxHitPoints)} />
             <Stat label="Init" value={formatMod(derived.initiativeBonus)} />
             <Stat label="Prof" value={formatMod(derived.proficiencyBonus)} />
           </View>
@@ -82,16 +88,10 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: theme.colors.background },
+  scroll: { flex: 1, backgroundColor: theme.colors.surface },
   root: {
     padding: theme.spacing.lg,
     paddingBottom: theme.spacing.xl,
-  },
-  title: {
-    color: theme.colors.accent,
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 4,
   },
   hint: {
     color: theme.colors.textMuted,
@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
     borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.colors.background,
     borderRadius: 12,
     padding: theme.spacing.md,
     marginBottom: theme.spacing.md,
@@ -128,6 +128,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
   },
+  last: {
+    color: theme.colors.accent,
+    fontSize: 12,
+    marginTop: 6,
+    fontWeight: '600',
+  },
   statRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -143,7 +149,7 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.sm,
     paddingHorizontal: theme.spacing.sm,
     alignItems: 'center',
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.colors.background,
   },
   statValue: {
     color: theme.colors.accent,

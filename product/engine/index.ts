@@ -12,3 +12,4 @@ export * from './narrator';
 export * from './map';
 export * from './stills';
 export * from './scene';
+export * from './campaignState';

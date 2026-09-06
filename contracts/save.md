@@ -22,6 +22,7 @@ Top-level document written to durable storage.
 | `party` | `CharacterSheet[]` | Ordered; **may be empty** |
 | `session` | `SessionState` | Current play pointer |
 | `flags` | `Record<string, boolean \| number \| string>` | Lightweight quest/world flags |
+| `world` | `CampaignWorldState` (optional) | Inventory/gold (≥0), quests, combat, storyMeta, playPrefs (CS-01); omitted on older saves |
 
 ## Session state
 | Field | Type | Notes |
@@ -31,6 +32,9 @@ Top-level document written to durable storage.
 | `logSummary` | string | Short offline-safe summary of recent events |
 | `rngSeed` | number \| null | Optional seed for reproducible dice |
 | `storyBeats` | `StoryBeatRecord[]` (optional) | Player-facing Story log for Continue hydrate; capped |
+
+## CampaignState (CS-01)
+PlayShell panels read a unified `CampaignState` view (`campaignToState`) over `party` + `session` + `world`. Story applies structured patches (`applyCampaignPatch` / `patchesFromSceneBeat`) — no per-tab local copies. Gold is clamped ≥ 0 on every patch.
 
 ## Persistence interface
 ```ts

@@ -10,8 +10,10 @@ import {
 } from 'react-native';
 import type { CampaignSave, StoryBeatRecord } from '../../engine';
 import {
+  applyCampaignPatch,
   createSeededRng,
   createStarterMap,
+  patchesFromSceneBeat,
   resolveSceneBeat,
   whereAmI,
   withSession,
@@ -160,12 +162,13 @@ export function SceneScreen({
       const prose = playerFacingProse(beat.prose);
       const playerLine = pendingPlayerLine.current;
       pendingPlayerLine.current = null;
+      const placeLine = naturalPlaceLine(beat.where);
       const entry: StoryBeat = {
         id: `${beat.campaign.session.turn}-${Date.now()}`,
         prose,
         checkLine: beat.check?.line ?? null,
         still: beat.still,
-        placeLine: naturalPlaceLine(beat.where),
+        placeLine,
         playerLine,
       };
       const next = [...beatsRef.current, entry].slice(-MAX_STORY_BEATS);
@@ -173,11 +176,27 @@ export function SceneScreen({
       lastLocRef.current = beat.campaign.session.locationId ?? null;
       setBeats(next);
       setEarlierOpen(false);
-      onCampaignChange(
-        withSession(beat.campaign, {
-          storyBeats: next.map(toRecord),
-        }),
-      );
+
+      // CS-02: structured patches into CampaignState (no panel-local copies).
+      // Check/travel stay out of narrator prose — only world/session fields.
+      const records = next.map(toRecord);
+      const stub = patchesFromSceneBeat({
+        playerAction: playerLine,
+        travelToId: beat.travel?.toNodeId ?? null,
+        checkLine: beat.check?.line ?? null,
+        checkSuccess: beat.check ? beat.check.result.success : null,
+        placeLine,
+        storyBeats: records,
+      });
+      // Prefer engine campaign (turn/location/log) then overlay patches.
+      let saved = withSession(beat.campaign, { storyBeats: records });
+      saved = applyCampaignPatch(saved, {
+        ...stub,
+        // storyBeats already on session via withSession; keep meta/inventory/quests
+        storyBeats: records,
+        locationId: beat.campaign.session.locationId,
+      });
+      onCampaignChange(saved);
       requestAnimationFrame(() => {
         logRef.current?.scrollToEnd({ animated: true });
       });
