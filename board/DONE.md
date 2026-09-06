@@ -1,5 +1,13 @@
 # Done
 
+## T-018 — Map travel ↔ Story sync
+- SceneScreen syncs place line + continue beat (skipTravel) when Map changes locationId
+
+## T-019 — Dice/Stills in PlayShell + Home chrome
+- Dice + Stills tabs in PlayShell; Home drops orphan tools and tech persist labels
+
+# Done
+
 ## T-017 — Story polish (Sprint A P0)
 - Story stays mounted across PlayShell tabs; storyBeats hydrate on Continue
 - No Story location crumb; Map owns path/exits

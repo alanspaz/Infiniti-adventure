@@ -7,22 +7,20 @@ import { SettingsScreen } from './src/screens/SettingsScreen';
 import { PackSelectScreen } from './src/screens/PackSelectScreen';
 import { IdentityScreen } from './src/screens/IdentityScreen';
 import { PlayShell } from './src/screens/PlayShell';
-import { DiceScreen } from './src/screens/DiceScreen';
-import { StillsScreen } from './src/screens/StillsScreen';
 import {
   loadActiveCampaign,
   persistCampaign,
 } from './src/persist';
 
-type Screen = 'home' | 'settings' | 'pack-select' | 'identity' | 'play' | 'dice' | 'stills';
+type Screen = 'home' | 'settings' | 'pack-select' | 'identity' | 'play';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
   const [draftPackId, setDraftPackId] = useState<string | null>(null);
   const [lastCampaign, setLastCampaign] = useState<CampaignSave | null>(null);
-  const [persistNote, setPersistNote] = useState<string | null>(null);
+  const [statusNote, setStatusNote] = useState<string | null>(null);
 
-  // Best-effort restore after reload (AsyncStorage or memory fallback).
+  // Best-effort restore after reload.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -30,7 +28,7 @@ export default function App() {
         const camp = await loadActiveCampaign();
         if (!cancelled && camp) {
           setLastCampaign(camp);
-          setPersistNote('Restored from device storage');
+          setStatusNote('Ready to continue');
         }
       } catch {
         // ignore — continue with empty session
@@ -46,9 +44,10 @@ export default function App() {
     try {
       const saved = await persistCampaign(campaign);
       setLastCampaign(saved);
-      setPersistNote('Saved on device');
+      // Quiet success — no tech chrome on Home.
+      setStatusNote(null);
     } catch {
-      setPersistNote('In memory only (storage unavailable)');
+      setStatusNote('Progress is held for this session only');
     }
   }, []);
 
@@ -57,7 +56,7 @@ export default function App() {
       {screen === 'home' ? (
         <HomeScreen
           lastCampaign={lastCampaign}
-          persistNote={persistNote}
+          statusNote={statusNote}
           onOpenSettings={() => setScreen('settings')}
           onNewCampaign={() => {
             setDraftPackId(null);
@@ -70,8 +69,6 @@ export default function App() {
                 }
               : undefined
           }
-          onOpenDice={() => setScreen('dice')}
-          onOpenStills={() => setScreen('stills')}
         />
       ) : null}
       {screen === 'settings' ? (
@@ -105,18 +102,6 @@ export default function App() {
             void commitCampaign(next);
           }}
           onLeave={() => setScreen('home')}
-        />
-      ) : null}
-      {screen === 'dice' ? (
-        <DiceScreen
-          campaign={lastCampaign}
-          onBack={() => setScreen('home')}
-        />
-      ) : null}
-      {screen === 'stills' ? (
-        <StillsScreen
-          campaign={lastCampaign}
-          onBack={() => setScreen('home')}
         />
       ) : null}
       <StatusBar style="light" />

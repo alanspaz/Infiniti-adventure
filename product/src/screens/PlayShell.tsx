@@ -9,6 +9,8 @@ import { CharacterSheetScreen } from './CharacterSheetScreen';
 import { CompanionsTab } from './CompanionsTab';
 import { ItemsTab } from './ItemsTab';
 import { MapScreen } from './MapScreen';
+import { DiceScreen } from './DiceScreen';
+import { StillsScreen } from './StillsScreen';
 import { SettingsScreen } from './SettingsScreen';
 
 type Props = {
@@ -19,9 +21,8 @@ type Props = {
 };
 
 /**
- * In-campaign play shell: top tabs for Story / Quest / Character /
- * Companions / Items / Map / Settings. Home stays the entry point.
- * Story stays mounted across tab switches so the log is not wiped.
+ * In-campaign play shell. Story stays mounted across tab switches.
+ * Dice + Stills live here (T-019); Map travel syncs Story (T-018).
  */
 export function PlayShell({ campaign, onCampaignChange, onLeave }: Props) {
   const [tab, setTab] = useState<PlayTabId>('story');
@@ -70,6 +71,12 @@ export function PlayShell({ campaign, onCampaignChange, onLeave }: Props) {
             onCampaignChange={onCampaignChange}
             embedded
           />
+        ) : null}
+        {tab === 'dice' ? (
+          <DiceScreen campaign={campaign} embedded />
+        ) : null}
+        {tab === 'stills' ? (
+          <StillsScreen campaign={campaign} embedded />
         ) : null}
         {tab === 'settings' ? <SettingsScreen embedded /> : null}
       </View>

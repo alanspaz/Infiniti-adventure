@@ -17,7 +17,8 @@ import { theme } from '../theme';
 
 type Props = {
   campaign: CampaignSave | null;
-  onBack: () => void;
+  onBack?: () => void;
+  embedded?: boolean;
 };
 
 const QUICK_SUBJECTS: StillSubjectKind[] = [
@@ -31,7 +32,7 @@ const QUICK_SUBJECTS: StillSubjectKind[] = [
  * Dedicated stills gallery: request stub placeholders + browse device cache.
  * Offline-first; remote image gen not required.
  */
-export function StillsScreen({ campaign, onBack }: Props) {
+export function StillsScreen({ campaign, onBack, embedded = false }: Props) {
   const [entries, setEntries] = useState<StillCacheEntry[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,8 +72,8 @@ export function StillsScreen({ campaign, onBack }: Props) {
       });
       setNote(
         result.message.includes('(cached)')
-          ? 'Loaded from device cache'
-          : 'Placeholder saved to device cache',
+          ? 'A familiar vision returns.'
+          : 'A new vision settles in.',
       );
       await refresh();
     } catch (err) {
@@ -88,19 +89,21 @@ export function StillsScreen({ campaign, onBack }: Props) {
       contentContainerStyle={styles.root}
       keyboardShouldPersistTaps="handled"
     >
-      <Pressable
-        accessibilityRole="button"
-        onPress={onBack}
-        style={({ pressed }) => [styles.back, pressed && styles.pressed]}
-      >
-        <Text style={styles.backLabel}>Back</Text>
-      </Pressable>
+      {!embedded && onBack ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={onBack}
+          style={({ pressed }) => [styles.back, pressed && styles.pressed]}
+        >
+          <Text style={styles.backLabel}>Back</Text>
+        </Pressable>
+      ) : null}
 
       <Text style={styles.title}>Stills</Text>
       <Text style={styles.hint}>
-        Ask to see what was described. Offline stub returns themed placeholders;
-        results persist on device so they survive reload. Remote image gen is
-        not configured. Empty party is valid.
+        {embedded
+          ? 'Ask to see what was described. Visions linger in your gallery.'
+          : 'Ask to see what was described. Offline placeholders linger between sessions.'}
       </Text>
 
       {note ? <Text style={styles.note}>{note}</Text> : null}

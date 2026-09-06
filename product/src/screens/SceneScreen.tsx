@@ -12,6 +12,7 @@ import {
   createSeededRng,
   createStarterMap,
   resolveSceneBeat,
+  whereAmI,
   withSession,
   type SceneBeatResult,
   type StillResult,
@@ -132,6 +133,9 @@ export function SceneScreen({
   const logRef = useRef<ScrollView>(null);
   const bootstrappedFor = useRef<string | null>(null);
   const beatsRef = useRef<StoryBeat[]>([]);
+  /** Tracks location last known by Story — Map-driven changes sync here. */
+  const lastLocRef = useRef<string | null>(null);
+  const mapSyncBusy = useRef(false);
 
   const [beats, setBeats] = useState<StoryBeat[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -160,6 +164,7 @@ export function SceneScreen({
       };
       const next = [...beatsRef.current, entry].slice(-MAX_STORY_BEATS);
       beatsRef.current = next;
+      lastLocRef.current = beat.campaign.session.locationId ?? null;
       setBeats(next);
       setEarlierOpen(false);
       onCampaignChange(
@@ -180,6 +185,7 @@ export function SceneScreen({
       beat?: 'opening' | 'continue' | 'custom';
       showMe?: boolean;
       forceCheck?: null;
+      skipTravel?: boolean;
     }) => {
       setBusy(true);
       setError(null);
@@ -203,6 +209,7 @@ export function SceneScreen({
             stills: stillProvider,
             showMe: opts.showMe,
             forceCheck: opts.forceCheck,
+            skipTravel: opts.skipTravel,
             rng: createSeededRng(seed + campaign.session.turn),
           });
         } catch (err) {
@@ -220,6 +227,7 @@ export function SceneScreen({
               stills: stillProvider,
               showMe: opts.showMe,
               forceCheck: opts.forceCheck,
+              skipTravel: opts.skipTravel,
               rng: createSeededRng(seed + campaign.session.turn),
             });
           } else {
@@ -247,6 +255,7 @@ export function SceneScreen({
       const hydrated = recordsToBeats(saved);
       beatsRef.current = hydrated;
       setBeats(hydrated);
+      lastLocRef.current = campaign.session.locationId ?? null;
       bootstrappedFor.current = campaign.id;
       return;
     }
@@ -256,17 +265,60 @@ export function SceneScreen({
       if (fromLog.length > 0) {
         beatsRef.current = fromLog;
         setBeats(fromLog);
+        lastLocRef.current = campaign.session.locationId ?? null;
         bootstrappedFor.current = campaign.id;
         return;
       }
+      lastLocRef.current = campaign.session.locationId ?? null;
       bootstrappedFor.current = campaign.id;
       return;
     }
 
+    lastLocRef.current = campaign.session.locationId ?? null;
     bootstrappedFor.current = campaign.id;
     void runBeat({ beat: 'opening' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaign.id]);
+
+  // T-018: Map travel updates location without Story applying a beat — sync place + narrate arrival.
+  useEffect(() => {
+    if (bootstrappedFor.current !== campaign.id) return;
+    const loc = campaign.session.locationId ?? null;
+    if (loc === lastLocRef.current) return;
+    // Wait out in-flight Story beats so we do not drop a Map travel sync.
+    if (busy || mapSyncBusy.current) return;
+
+    lastLocRef.current = loc;
+
+    let where: ReturnType<typeof whereAmI> | null = null;
+    try {
+      if (loc) where = whereAmI(map, loc);
+    } catch {
+      where = null;
+    }
+    const place = naturalPlaceLine(where);
+    if (place && beatsRef.current.length > 0) {
+      const updated = beatsRef.current.map((b, i, arr) =>
+        i === arr.length - 1 ? { ...b, placeLine: place } : b,
+      );
+      beatsRef.current = updated;
+      setBeats(updated);
+    }
+
+    mapSyncBusy.current = true;
+    void (async () => {
+      try {
+        await runBeat({
+          beat: 'continue',
+          skipTravel: true,
+          forceCheck: null,
+        });
+      } finally {
+        mapSyncBusy.current = false;
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaign.session.locationId, campaign.id, busy]);
 
   const submitAction = () => {
     const text = action.trim();

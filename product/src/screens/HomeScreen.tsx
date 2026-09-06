@@ -8,23 +8,20 @@ type Props = {
   onNewCampaign: () => void;
   /** Resume active campaign in the play shell. */
   onContinue?: () => void;
-  /** Dice tool (optional; also reachable later from play). */
-  onOpenDice: () => void;
-  /** Stills gallery. */
-  onOpenStills: () => void;
   lastCampaign?: CampaignSave | null;
-  /** Best-effort persist status (saved / restored / memory-only). */
-  persistNote?: string | null;
+  /**
+   * Soft status under the campaign banner (player-facing).
+   * Prefer quiet labels — no storage/tech chrome.
+   */
+  statusNote?: string | null;
 };
 
 export function HomeScreen({
   onOpenSettings,
   onNewCampaign,
   onContinue,
-  onOpenDice,
-  onOpenStills,
   lastCampaign = null,
-  persistNote = null,
+  statusNote = null,
 }: Props) {
   return (
     <View style={styles.root}>
@@ -34,14 +31,14 @@ export function HomeScreen({
         are never added for you.
       </Text>
       <Text style={styles.placeholder}>
-        Start a campaign, then play in Story. Map, Character, Quests, and more
+        Start a campaign, then play in Story. Map, Dice, Stills, and the rest
         live in the adventure tabs.
       </Text>
 
       {lastCampaign ? (
         <View style={styles.banner}>
           <Text style={styles.bannerLabel}>
-            {persistNote ?? 'Campaign ready'}
+            {statusNote ?? 'Ready to continue'}
           </Text>
           <Text style={styles.bannerTitle}>{lastCampaign.title}</Text>
           <Text style={styles.bannerMeta}>
@@ -82,30 +79,6 @@ export function HomeScreen({
         >
           New campaign
         </Text>
-      </Pressable>
-
-      <Pressable
-        accessibilityRole="button"
-        onPress={onOpenDice}
-        style={({ pressed }) => [
-          styles.button,
-          styles.buttonSpaced,
-          pressed && styles.buttonPressed,
-        ]}
-      >
-        <Text style={styles.buttonLabel}>Dice</Text>
-      </Pressable>
-
-      <Pressable
-        accessibilityRole="button"
-        onPress={onOpenStills}
-        style={({ pressed }) => [
-          styles.button,
-          styles.buttonSpaced,
-          pressed && styles.buttonPressed,
-        ]}
-      >
-        <Text style={styles.buttonLabel}>Stills</Text>
       </Pressable>
 
       <Pressable
@@ -200,12 +173,12 @@ const styles = StyleSheet.create({
   buttonSpaced: {
     marginTop: theme.spacing.sm,
   },
-  buttonPressed: {
-    opacity: 0.85,
-  },
   buttonLabel: {
     color: theme.colors.accent,
     fontSize: 16,
     fontWeight: '600',
+  },
+  buttonPressed: {
+    opacity: 0.85,
   },
 });

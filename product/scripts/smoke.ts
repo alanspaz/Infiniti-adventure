@@ -300,13 +300,10 @@ async function main() {
   assert.match(appSrc, /IdentityScreen/);
   assert.match(appSrc, /onNewCampaign|pack-select/);
   assert.match(appSrc, /PlayShell/);
-  assert.match(appSrc, /DiceScreen/);
   assert.match(appSrc, /loadActiveCampaign|persistCampaign/);
   assert.match(appSrc, /onContinue|Continue/);
-  assert.match(appSrc, /onOpenDice|dice/);
-  assert.match(appSrc, /StillsScreen/);
-  assert.match(appSrc, /onOpenStills|stills/);
   assert.match(appSrc, /onCampaignChange/);
+  assert.doesNotMatch(appSrc, /Restored from device storage/);
   assert.match(appSrc, /setScreen\('play'\)|screen === 'play'/);
 
   const settingsSrc = fs.readFileSync(
@@ -329,6 +326,7 @@ async function main() {
   assert.match(sceneSrc, /StillFrame/);
   assert.match(sceneSrc, /createAppStillProvider|stills:/);
   assert.match(sceneSrc, /baseUrl/);
+  assert.match(sceneSrc, /skipTravel|whereAmI/);
   assert.doesNotMatch(sceneSrc, /Offline adventure loop/);
   assert.doesNotMatch(sceneSrc, /source=\$\{beat\.narrator\.source\}/);
   assert.doesNotMatch(sceneSrc, /offline=\$\{/);
@@ -342,6 +340,8 @@ async function main() {
   assert.match(playShellSrc, /MapScreen/);
   assert.match(playShellSrc, /CharacterSheetScreen/);
   assert.match(playShellSrc, /SettingsScreen/);
+  assert.match(playShellSrc, /DiceScreen/);
+  assert.match(playShellSrc, /StillsScreen/);
 
   const tabBarPath = path.resolve(__dirname, '../src/components/PlayTabBar.tsx');
   assert.ok(fs.existsSync(tabBarPath), 'PlayTabBar.tsx missing');

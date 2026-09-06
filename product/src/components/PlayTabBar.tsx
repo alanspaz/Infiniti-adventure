@@ -9,6 +9,8 @@ export type PlayTabId =
   | 'companions'
   | 'items'
   | 'map'
+  | 'dice'
+  | 'stills'
   | 'settings';
 
 export const PLAY_TABS: { id: PlayTabId; label: string }[] = [
@@ -18,6 +20,8 @@ export const PLAY_TABS: { id: PlayTabId; label: string }[] = [
   { id: 'companions', label: 'Companions' },
   { id: 'items', label: 'Items' },
   { id: 'map', label: 'Map' },
+  { id: 'dice', label: 'Dice' },
+  { id: 'stills', label: 'Stills' },
   { id: 'settings', label: 'Settings' },
 ];
 

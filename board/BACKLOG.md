@@ -1,10 +1,8 @@
 # Backlog
 
 ## Next
-- T-018 Map travel ↔ Story sync (optional narrate on travel)
-- T-019 Fold Dice/Stills into PlayShell; soften Home persist chrome
-- T-020 Device Expo playtest pass after 017–019
-- Companion emotion / party UX (hold — not Sprint A)
+- T-020 Device Expo playtest pass
+- Companion emotion / party UX (hold — not Sprint A coding)
 
 ## Notes
-T-017 Story polish shipped. See board/DONE.md.
+T-017 / Narrative P0 / T-018 / T-019 shipped. See board/DONE.md.

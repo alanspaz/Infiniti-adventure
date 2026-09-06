@@ -29,7 +29,9 @@ import { theme } from '../theme';
 type Props = {
   /** Optional campaign for ability checks (uses first party PC). */
   campaign: CampaignSave | null;
-  onBack: () => void;
+  onBack?: () => void;
+  /** Hide back chrome when inside PlayShell. */
+  embedded?: boolean;
 };
 
 const ABILITY_LABELS: Record<AbilityKey, string> = {
@@ -51,7 +53,7 @@ function formatMod(n: number): string {
  * Dice screen: NdM rolls + ability checks via engine dice + character modifiers.
  * Plain rolls work without a campaign; checks need an active PC.
  */
-export function DiceScreen({ campaign, onBack }: Props) {
+export function DiceScreen({ campaign, onBack, embedded = false }: Props) {
   const pc: CharacterSheet | null =
     campaign && campaign.party.length > 0 ? campaign.party[0]! : null;
 
@@ -112,19 +114,27 @@ export function DiceScreen({ campaign, onBack }: Props) {
       contentContainerStyle={styles.root}
       keyboardShouldPersistTaps="handled"
     >
-      <Pressable
-        accessibilityRole="button"
-        onPress={onBack}
-        style={({ pressed }) => [styles.back, pressed && styles.pressed]}
-      >
-        <Text style={styles.backLabel}>Back</Text>
-      </Pressable>
+      {!embedded && onBack ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={onBack}
+          style={({ pressed }) => [styles.back, pressed && styles.pressed]}
+        >
+          <Text style={styles.backLabel}>Back</Text>
+        </Pressable>
+      ) : null}
 
       <Text style={styles.title}>Dice</Text>
-      <Text style={styles.hint}>
-        On-device rolls using the engine. Ability checks add your PC modifiers —
-        no invented math outside the engine.
-      </Text>
+      {!embedded ? (
+        <Text style={styles.hint}>
+          On-device rolls using the engine. Ability checks add your PC modifiers —
+          no invented math outside the engine.
+        </Text>
+      ) : (
+        <Text style={styles.hint}>
+          Roll the bones. Checks use your character when you have one.
+        </Text>
+      )}
 
       <Text style={styles.section}>Roll NdM</Text>
       <View style={styles.quickRow}>
