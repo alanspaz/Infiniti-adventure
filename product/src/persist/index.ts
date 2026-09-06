@@ -11,3 +11,11 @@ export {
   loadActiveCampaign,
   clearActiveCampaign,
 } from './campaignPersistence';
+
+export {
+  createAppStillProvider,
+  loadCachedStill,
+  saveStillResult,
+  loadStillGallery,
+  getStillPersistStore,
+} from './stillCache';

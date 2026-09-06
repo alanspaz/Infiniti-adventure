@@ -1,9 +1,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { MemoryPersistStore } from './persist';
 import {
+  CachingStillProvider,
   StubStillProvider,
+  createCachedStillProvider,
   createStillProvider,
+  listStillCacheEntries,
+  readStillCache,
   stillCacheKey,
+  writeStillCache,
 } from './stills';
 
 describe('stills provider', () => {
@@ -64,5 +70,50 @@ describe('stills provider', () => {
     });
     assert.equal(result.offline, true);
     assert.doesNotMatch(result.message, /nsfw|explicit/i);
+  });
+});
+
+describe('stills cache persistence', () => {
+  it('write/read round-trip via PersistStore', async () => {
+    const store = new MemoryPersistStore();
+    const provider = createStillProvider('stub');
+    const result = await provider.requestStill({
+      subjectKind: 'item',
+      subjectId: 'lantern',
+      locationId: 'interior.kettle-common',
+    });
+    const entry = await writeStillCache(store, result);
+    assert.ok(entry.cachedAt);
+    const loaded = await readStillCache(store, result.cacheKey);
+    assert.ok(loaded);
+    assert.equal(loaded!.cacheKey, result.cacheKey);
+    assert.equal(loaded!.placeholder, true);
+    assert.equal(loaded!.uri, null);
+  });
+
+  it('CachingStillProvider hits cache on second request', async () => {
+    const store = new MemoryPersistStore();
+    const cached = createCachedStillProvider(store, 'stub');
+    const req = {
+      subjectKind: 'described' as const,
+      prompt: 'hearth glow',
+      locationId: 'interior.kettle-common',
+      playstylePackId: 'hearthlight',
+    };
+    const first = await cached.requestStill(req);
+    assert.equal(first.placeholder, true);
+    assert.doesNotMatch(first.message, /\(cached\)/);
+    const second = await cached.requestStill(req);
+    assert.equal(second.cacheKey, first.cacheKey);
+    assert.match(second.message, /\(cached\)/);
+    const listed = await listStillCacheEntries(store);
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0]!.cacheKey, first.cacheKey);
+  });
+
+  it('CachingStillProvider kind mirrors inner', () => {
+    const store = new MemoryPersistStore();
+    const wrap = new CachingStillProvider(createStillProvider('stub'), store);
+    assert.equal(wrap.kind, 'stub');
   });
 });

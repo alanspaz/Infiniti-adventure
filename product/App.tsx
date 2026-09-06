@@ -10,12 +10,13 @@ import { SceneScreen } from './src/screens/SceneScreen';
 import { MapScreen } from './src/screens/MapScreen';
 import { CharacterSheetScreen } from './src/screens/CharacterSheetScreen';
 import { DiceScreen } from './src/screens/DiceScreen';
+import { StillsScreen } from './src/screens/StillsScreen';
 import {
   loadActiveCampaign,
   persistCampaign,
 } from './src/persist';
 
-type Screen = 'home' | 'settings' | 'pack-select' | 'identity' | 'scene' | 'map' | 'sheet' | 'dice';
+type Screen = 'home' | 'settings' | 'pack-select' | 'identity' | 'scene' | 'map' | 'sheet' | 'dice' | 'stills';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
@@ -76,6 +77,7 @@ export default function App() {
           onOpenMap={lastCampaign ? () => setScreen('map') : undefined}
           onOpenSheet={() => setScreen('sheet')}
           onOpenDice={() => setScreen('dice')}
+          onOpenStills={() => setScreen('stills')}
         />
       ) : null}
       {screen === 'settings' ? (
@@ -128,6 +130,12 @@ export default function App() {
       ) : null}
       {screen === 'dice' ? (
         <DiceScreen
+          campaign={lastCampaign}
+          onBack={() => setScreen('home')}
+        />
+      ) : null}
+      {screen === 'stills' ? (
+        <StillsScreen
           campaign={lastCampaign}
           onBack={() => setScreen('home')}
         />

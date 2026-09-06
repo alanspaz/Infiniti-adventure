@@ -108,6 +108,25 @@ async function main() {
   }
   assert.ok(stillRemoteThrew, 'remote stills should throw not configured');
 
+  // Stills cache persistence (T-013)
+  assert.equal(typeof engine.CachingStillProvider, 'function');
+  assert.equal(typeof engine.createCachedStillProvider, 'function');
+  assert.equal(typeof engine.writeStillCache, 'function');
+  const stillMem = new engine.MemoryPersistStore();
+  const cachedStills = engine.createCachedStillProvider(stillMem, 'stub');
+  const stillReq = {
+    subjectKind: 'described' as const,
+    prompt: 'smoke hearth',
+    locationId: map.startNodeId,
+  };
+  const stillA = await cachedStills.requestStill(stillReq);
+  assert.equal(stillA.placeholder, true);
+  const stillB = await cachedStills.requestStill(stillReq);
+  assert.match(stillB.message, /cached/i);
+  const stillGallery = await engine.listStillCacheEntries(stillMem);
+  assert.equal(stillGallery.length, 1);
+
+
   // Scene adventure loop (T-012)
   assert.equal(typeof engine.resolveSceneBeat, 'function');
   assert.equal(typeof engine.detectSuggestedCheck, 'function');
@@ -198,6 +217,7 @@ async function main() {
     'MapScreen.tsx',
     'CharacterSheetScreen.tsx',
     'DiceScreen.tsx',
+    'StillsScreen.tsx',
   ]) {
     assert.ok(
       fs.existsSync(path.join(screensDir, f)),
@@ -224,6 +244,8 @@ async function main() {
   assert.match(appSrc, /onNewScene|scene/);
   assert.match(appSrc, /onOpenSheet|sheet/);
   assert.match(appSrc, /onOpenDice|dice/);
+  assert.match(appSrc, /StillsScreen/);
+  assert.match(appSrc, /onOpenStills|stills/);
   assert.match(appSrc, /onCampaignChange/);
 
   const sceneSrc = fs.readFileSync(
@@ -234,6 +256,21 @@ async function main() {
   assert.match(sceneSrc, /Show me/);
   assert.match(sceneSrc, /Submit action/);
   assert.match(sceneSrc, /verbosity/);
+  assert.match(sceneSrc, /StillFrame/);
+  assert.match(sceneSrc, /createAppStillProvider|stills:/);
+
+  const stillsSrc = fs.readFileSync(
+    path.join(screensDir, 'StillsScreen.tsx'),
+    'utf8',
+  );
+  assert.match(stillsSrc, /StillFrame/);
+  assert.match(stillsSrc, /loadStillGallery|createAppStillProvider/);
+
+  const stillFramePath = path.resolve(__dirname, '../src/components/StillFrame.tsx');
+  assert.ok(fs.existsSync(stillFramePath), 'StillFrame.tsx missing');
+
+  assert.equal(typeof persistMod.createAppStillProvider, 'function');
+  assert.equal(typeof persistMod.loadStillGallery, 'function');
 
   let appImported = false;
   try {
@@ -249,7 +286,7 @@ async function main() {
   }
 
   console.log(
-    'smoke ok: engine + identity + narrator + map + stills + scene loop + persist + sheet/dice UI' +
+    'smoke ok: engine + identity + narrator + map + stills/cache UI + scene loop + persist + sheet/dice UI' +
       (appImported ? ' + App import' : ' + App.tsx verified'),
   );
 }

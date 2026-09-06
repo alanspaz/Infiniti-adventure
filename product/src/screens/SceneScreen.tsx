@@ -13,8 +13,11 @@ import {
   createStarterMap,
   resolveSceneBeat,
   type SceneBeatResult,
+  type StillResult,
 } from '../../engine';
 import { createPlayNarrator } from '../ai';
+import { StillFrame } from '../components/StillFrame';
+import { createAppStillProvider } from '../persist/stillCache';
 import { useSettings } from '../settings/SettingsContext';
 import { theme } from '../theme';
 
@@ -29,16 +32,18 @@ type Props = {
  * Full scene / adventure play loop (v1):
  * narrator beat → player action → optional check → travel → optional still → save.
  * Stub works offline; remote is optional and falls back to stub.
+ * Show-me stills use cached stub placeholders (device PersistStore).
  */
 export function SceneScreen({ campaign, onBack, onCampaignChange }: Props) {
   const { verbosity, providerKind, apiKey } = useSettings();
   const map = useMemo(() => createStarterMap(), []);
+  const stillProvider = useMemo(() => createAppStillProvider(), []);
 
   const [prose, setProse] = useState<string | null>(null);
   const [meta, setMeta] = useState<string | null>(null);
   const [checkLine, setCheckLine] = useState<string | null>(null);
   const [whereLine, setWhereLine] = useState<string | null>(null);
-  const [stillLine, setStillLine] = useState<string | null>(null);
+  const [still, setStill] = useState<StillResult | null>(null);
   const [fallbackNote, setFallbackNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -58,11 +63,7 @@ export function SceneScreen({ campaign, onBack, onCampaignChange }: Props) {
       setProse(beat.prose);
       setCheckLine(beat.check?.line ?? null);
       setWhereLine(beat.where ? beat.where.line : null);
-      setStillLine(
-        beat.still
-          ? `${beat.still.message} · ${beat.still.cacheKey}`
-          : null,
-      );
+      setStill(beat.still);
       setFallbackNote(note);
       setMeta(
         `source=${beat.narrator.source} · offline=${beat.narrator.offline ? 'yes' : 'no'} · turn=${beat.campaign.session.turn} · settings=${providerKind}`,
@@ -99,6 +100,7 @@ export function SceneScreen({ campaign, onBack, onCampaignChange }: Props) {
             verbosity,
             narrator,
             map,
+            stills: stillProvider,
             showMe: opts.showMe,
             forceCheck: opts.forceCheck,
             rng: createSeededRng(seed + campaign.session.turn),
@@ -118,6 +120,7 @@ export function SceneScreen({ campaign, onBack, onCampaignChange }: Props) {
               verbosity,
               narrator,
               map,
+              stills: stillProvider,
               showMe: opts.showMe,
               forceCheck: opts.forceCheck,
               rng: createSeededRng(seed + campaign.session.turn),
@@ -136,7 +139,7 @@ export function SceneScreen({ campaign, onBack, onCampaignChange }: Props) {
         setBusy(false);
       }
     },
-    [campaign, verbosity, map, playNarrator, applyBeat],
+    [campaign, verbosity, map, playNarrator, applyBeat, stillProvider],
   );
 
   // Auto-load opening/continue when entering the screen once.
@@ -183,7 +186,8 @@ export function SceneScreen({ campaign, onBack, onCampaignChange }: Props) {
       <Text style={styles.title}>Scene</Text>
       <Text style={styles.hint}>
         Offline adventure loop for “{campaign.title}”. Stub narrator always
-        works; remote is optional when configured. Empty party is valid.
+        works; remote is optional when configured. Show me uses cached
+        placeholders on device. Empty party is valid.
       </Text>
 
       {whereLine ? <Text style={styles.where}>{whereLine}</Text> : null}
@@ -206,11 +210,11 @@ export function SceneScreen({ campaign, onBack, onCampaignChange }: Props) {
         </View>
       ) : null}
 
-      {stillLine ? (
-        <View style={styles.stillCard}>
-          <Text style={styles.checkLabel}>Show me</Text>
-          <Text style={styles.stillLine}>{stillLine}</Text>
-        </View>
+      {still ? (
+        <StillFrame
+          still={still}
+          caption="Show me — survives reload via device cache"
+        />
       ) : null}
 
       <Text style={styles.section}>Your action</Text>
@@ -352,13 +356,6 @@ const styles = StyleSheet.create({
     padding: theme.spacing.md,
     marginBottom: theme.spacing.md,
   },
-  stillCard: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 10,
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.md,
-  },
   checkLabel: {
     color: theme.colors.accent,
     fontSize: 12,
@@ -370,11 +367,6 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontSize: 14,
     lineHeight: 20,
-  },
-  stillLine: {
-    color: theme.colors.textMuted,
-    fontSize: 13,
-    lineHeight: 18,
   },
   section: {
     color: theme.colors.accent,

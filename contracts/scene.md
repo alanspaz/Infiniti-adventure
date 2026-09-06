@@ -8,7 +8,7 @@ On-device play loop that stitches narrator → player action → optional dice c
 2. **Player action** — free text; empty party valid.
 3. **Check** — heuristic `detectSuggestedCheck` (or `forceCheck`) → engine `resolveCheck` with PC modifiers when party non-empty (modifier 0 if empty).
 4. **Travel** — `detectTravelSuggestion` matches exit labels / place names on the starter map; updates `session.locationId`.
-5. **Show me** — optional stub still (`placeholder` + `cacheKey`); no image UI required.
+5. **Show me** — optional stub still (`placeholder` + `cacheKey`); UI via StillFrame + device cache (T-013).
 6. **Persist** — returns updated `CampaignSave`; app shell writes via PersistStore.
 
 ## Verbosity
@@ -20,4 +20,4 @@ Settings `short` | `standard` | `lush` passed into narrator.
 - **On-device** — reserved; factory falls back to stub.
 
 ## Non-goals
-Companion emotion system (not present yet), NSFW, Expo device playtest, vendor brand lock-in, stills image gallery.
+Companion emotion system (not present yet), NSFW, Expo device playtest, vendor brand lock-in.

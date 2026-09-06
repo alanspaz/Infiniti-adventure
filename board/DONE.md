@@ -1,5 +1,12 @@
 # Done
 
+## T-013 — Stills image UI / cache persistence
+- StillFrame + StillsScreen (Home); Scene “Show me” shows themed placeholder / cached result
+- PersistStore stills cache (`CachingStillProvider`); placeholders/cacheKeys survive reload
+- Remote stills not configured (optional); offline stub; empty party valid; no NSFW
+- Smoke + docs + flat zip refresh
+
+
 ## T-012 — Scene / adventure loop
 - Real Scene play screen: narrator beat → action → optional check → travel → optional show-me still → persist
 - Engine `scene.ts` heuristics + `resolveSceneBeat`; stub offline; remote HTTP optional (`enableHttp`) with stub fallback

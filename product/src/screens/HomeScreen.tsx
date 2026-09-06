@@ -16,6 +16,8 @@ type Props = {
   onOpenSheet: () => void;
   /** Dice / ability checks (NdM always; checks need PC). */
   onOpenDice: () => void;
+  /** Stills gallery / cache (offline placeholders). */
+  onOpenStills: () => void;
   lastCampaign?: CampaignSave | null;
   /** Best-effort persist status (saved / restored / memory-only). */
   persistNote?: string | null;
@@ -29,6 +31,7 @@ export function HomeScreen({
   onOpenMap,
   onOpenSheet,
   onOpenDice,
+  onOpenStills,
   lastCampaign = null,
   persistNote = null,
 }: Props) {
@@ -151,6 +154,18 @@ export function HomeScreen({
         ]}
       >
         <Text style={styles.buttonLabel}>Dice</Text>
+      </Pressable>
+
+      <Pressable
+        accessibilityRole="button"
+        onPress={onOpenStills}
+        style={({ pressed }) => [
+          styles.button,
+          styles.buttonSpaced,
+          pressed && styles.buttonPressed,
+        ]}
+      >
+        <Text style={styles.buttonLabel}>Stills</Text>
       </Pressable>
 
       <Pressable
