@@ -2,8 +2,8 @@
 
 | Field | Value |
 |-------|--------|
-| Current focus completed | T-013 Stills image UI / cache persistence |
-| **next_ticket** | Remote narrator base URL in settings + polish — or companion emotion / party UX |
+| Current focus completed | T-014 Remote narrator settings polish |
+| **next_ticket** | Companion emotion / party UX — or device Expo playtest (held) |
 | After that | Device Expo playtest |
 
 Update `next_ticket` when accepting the next ticket from `board/BACKLOG.md`.

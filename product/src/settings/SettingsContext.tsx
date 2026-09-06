@@ -4,6 +4,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { loadSettings, saveApiKey, savePrefs } from './storage';
@@ -13,12 +14,17 @@ import {
   SettingsPrefs,
   SettingsState,
   Verbosity,
+  remoteConfigError,
 } from './types';
 
 type SettingsContextValue = SettingsState & {
   ready: boolean;
+  /** Non-null when remote is selected but base URL / API key is missing. */
+  remoteError: string | null;
   setVerbosity: (verbosity: Verbosity) => Promise<void>;
   setProviderKind: (providerKind: ProviderKind) => Promise<void>;
+  setBaseUrl: (baseUrl: string) => Promise<void>;
+  setModel: (model: string) => Promise<void>;
   setApiKey: (apiKey: string) => Promise<void>;
 };
 
@@ -30,15 +36,28 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [providerKind, setProviderKindState] = useState<ProviderKind>(
     DEFAULT_PREFS.providerKind,
   );
+  const [baseUrl, setBaseUrlState] = useState(DEFAULT_PREFS.baseUrl);
+  const [model, setModelState] = useState(DEFAULT_PREFS.model);
   const [apiKey, setApiKeyState] = useState('');
+
+  const prefsRef = useRef<SettingsPrefs>({ ...DEFAULT_PREFS });
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const loaded = await loadSettings();
       if (cancelled) return;
-      setVerbosityState(loaded.verbosity);
-      setProviderKindState(loaded.providerKind);
+      const prefs: SettingsPrefs = {
+        verbosity: loaded.verbosity,
+        providerKind: loaded.providerKind,
+        baseUrl: loaded.baseUrl,
+        model: loaded.model,
+      };
+      prefsRef.current = prefs;
+      setVerbosityState(prefs.verbosity);
+      setProviderKindState(prefs.providerKind);
+      setBaseUrlState(prefs.baseUrl);
+      setModelState(prefs.model);
       setApiKeyState(loaded.apiKey);
       setReady(true);
     })();
@@ -47,24 +66,42 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const persistPrefs = useCallback(async (prefs: SettingsPrefs) => {
-    await savePrefs(prefs);
+  const persistPrefsPatch = useCallback(async (patch: Partial<SettingsPrefs>) => {
+    const next: SettingsPrefs = { ...prefsRef.current, ...patch };
+    prefsRef.current = next;
+    await savePrefs(next);
   }, []);
 
   const setVerbosity = useCallback(
     async (next: Verbosity) => {
       setVerbosityState(next);
-      await persistPrefs({ verbosity: next, providerKind });
+      await persistPrefsPatch({ verbosity: next });
     },
-    [persistPrefs, providerKind],
+    [persistPrefsPatch],
   );
 
   const setProviderKind = useCallback(
     async (next: ProviderKind) => {
       setProviderKindState(next);
-      await persistPrefs({ verbosity, providerKind: next });
+      await persistPrefsPatch({ providerKind: next });
     },
-    [persistPrefs, verbosity],
+    [persistPrefsPatch],
+  );
+
+  const setBaseUrl = useCallback(
+    async (next: string) => {
+      setBaseUrlState(next);
+      await persistPrefsPatch({ baseUrl: next });
+    },
+    [persistPrefsPatch],
+  );
+
+  const setModel = useCallback(
+    async (next: string) => {
+      setModelState(next);
+      await persistPrefsPatch({ model: next });
+    },
+    [persistPrefsPatch],
   );
 
   const setApiKey = useCallback(async (next: string) => {
@@ -72,17 +109,40 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     await saveApiKey(next);
   }, []);
 
+  const remoteError = useMemo(
+    () => remoteConfigError({ providerKind, baseUrl, apiKey }),
+    [providerKind, baseUrl, apiKey],
+  );
+
   const value = useMemo<SettingsContextValue>(
     () => ({
       ready,
       verbosity,
       providerKind,
+      baseUrl,
+      model,
       apiKey,
+      remoteError,
       setVerbosity,
       setProviderKind,
+      setBaseUrl,
+      setModel,
       setApiKey,
     }),
-    [ready, verbosity, providerKind, apiKey, setVerbosity, setProviderKind, setApiKey],
+    [
+      ready,
+      verbosity,
+      providerKind,
+      baseUrl,
+      model,
+      apiKey,
+      remoteError,
+      setVerbosity,
+      setProviderKind,
+      setBaseUrl,
+      setModel,
+      setApiKey,
+    ],
   );
 
   return (

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -23,18 +24,35 @@ export function SettingsScreen({ onBack }: Props) {
     verbosity,
     providerKind,
     apiKey,
+    baseUrl,
+    model,
+    remoteError,
     setVerbosity,
     setProviderKind,
     setApiKey,
+    setBaseUrl,
+    setModel,
   } = useSettings();
   const [draftKey, setDraftKey] = useState(apiKey);
+  const [draftBaseUrl, setDraftBaseUrl] = useState(baseUrl);
+  const [draftModel, setDraftModel] = useState(model);
 
   React.useEffect(() => {
     setDraftKey(apiKey);
   }, [apiKey]);
+  React.useEffect(() => {
+    setDraftBaseUrl(baseUrl);
+  }, [baseUrl]);
+  React.useEffect(() => {
+    setDraftModel(model);
+  }, [model]);
 
   return (
-    <View style={styles.root}>
+    <ScrollView
+      style={styles.root}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Pressable
         accessibilityRole="button"
         onPress={onBack}
@@ -97,9 +115,51 @@ export function SettingsScreen({ onBack }: Props) {
           </Pressable>
         ))}
       </View>
+      {providerKind === 'on-device' ? (
+        <Text style={styles.hint}>
+          On-device LLM is reserved in v1 — play uses the offline stub.
+        </Text>
+      ) : (
+        <Text style={styles.hint}>
+          Stub works offline. Remote uses an OpenAI-compatible chat URL + API
+          key (never logged). Play falls back to stub if remote is incomplete
+          or fails.
+        </Text>
+      )}
+      {remoteError ? <Text style={styles.error}>{remoteError}</Text> : null}
+
+      <Text style={styles.section}>Base URL</Text>
+      <TextInput
+        value={draftBaseUrl}
+        onChangeText={setDraftBaseUrl}
+        onBlur={() => {
+          void setBaseUrl(draftBaseUrl.trim());
+        }}
+        placeholder="https://api.openai.com/v1"
+        placeholderTextColor={theme.colors.textMuted}
+        autoCapitalize="none"
+        autoCorrect={false}
+        keyboardType="url"
+        style={styles.input}
+      />
       <Text style={styles.hint}>
-        On-device LLM is stubbed in v1. Remote needs an API key; the key is never logged.
+        OpenAI-compatible endpoint (OpenRouter / xAI / etc. also fine). Trailing
+        slash optional.
       </Text>
+
+      <Text style={styles.section}>Model (optional)</Text>
+      <TextInput
+        value={draftModel}
+        onChangeText={setDraftModel}
+        onBlur={() => {
+          void setModel(draftModel.trim());
+        }}
+        placeholder="e.g. gpt-4o-mini"
+        placeholderTextColor={theme.colors.textMuted}
+        autoCapitalize="none"
+        autoCorrect={false}
+        style={styles.input}
+      />
 
       <Text style={styles.section}>API key</Text>
       <TextInput
@@ -118,13 +178,15 @@ export function SettingsScreen({ onBack }: Props) {
       <Pressable
         accessibilityRole="button"
         onPress={() => {
+          void setBaseUrl(draftBaseUrl.trim());
+          void setModel(draftModel.trim());
           void setApiKey(draftKey);
         }}
         style={({ pressed }) => [styles.save, pressed && styles.pressed]}
       >
-        <Text style={styles.saveLabel}>Save key</Text>
+        <Text style={styles.saveLabel}>Save remote settings</Text>
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -132,8 +194,11 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: theme.colors.background,
+  },
+  content: {
     padding: theme.spacing.lg,
     paddingTop: theme.spacing.xl,
+    paddingBottom: theme.spacing.xl * 2,
   },
   back: {
     alignSelf: 'flex-start',
@@ -187,6 +252,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: theme.spacing.sm,
     lineHeight: 18,
+  },
+  error: {
+    color: '#e08060',
+    fontSize: 13,
+    marginTop: theme.spacing.sm,
+    lineHeight: 18,
+    fontWeight: '600',
   },
   input: {
     borderWidth: 1,

@@ -1,5 +1,11 @@
 # Done
 
+## T-014 — Remote narrator settings polish
+- Settings: provider kind, API key, base URL, optional model; clear remote incomplete errors
+- Prefs blob persists baseUrl/model; SecureStore for API key (never logged)
+- createPlayNarrator enables HTTP fetch when remote configured; stub fallback otherwise; on-device reserved
+- contracts/narrator.md; unit + smoke (mock fetch); docs + flat zip; GitHub push when green
+
 ## T-013 — Stills image UI / cache persistence
 - StillFrame + StillsScreen (Home); Scene “Show me” shows themed placeholder / cached result
 - PersistStore stills cache (`CachingStillProvider`); placeholders/cacheKeys survive reload

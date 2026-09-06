@@ -207,6 +207,66 @@ async function main() {
   assert.equal(play.provider.kind, 'stub');
   assert.ok(play.fallbackNote);
 
+  const settingsTypes = await import('../src/settings/types');
+  assert.equal(typeof settingsTypes.remoteConfigError, 'function');
+  assert.match(
+    settingsTypes.remoteConfigError({
+      providerKind: 'remote',
+      baseUrl: '',
+      apiKey: '',
+    }) ?? '',
+    /base URL/i,
+  );
+  const settingsStorage = await import('../src/settings/storage');
+  settingsStorage.__resetMemoryStoreForTests();
+  await settingsStorage.savePrefs({
+    verbosity: 'standard',
+    providerKind: 'remote',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'smoke-model',
+  });
+  await settingsStorage.saveApiKey('smoke-key');
+  const loadedSettings = await settingsStorage.loadSettings();
+  assert.equal(loadedSettings.baseUrl, 'https://api.openai.com/v1');
+  assert.equal(loadedSettings.model, 'smoke-model');
+  assert.equal(loadedSettings.apiKey, 'smoke-key');
+
+  const mockFetch = async (input: RequestInfo | URL) => {
+    assert.match(String(input), /chat\/completions$/);
+    return {
+      ok: true,
+      json: async () => ({
+        id: 'chatcmpl-smoke',
+        object: 'chat.completion',
+        created: 1,
+        model: 'smoke-model',
+        choices: [
+          {
+            index: 0,
+            message: { role: 'assistant', content: 'Smoke remote line.' },
+            finish_reason: 'stop',
+          },
+        ],
+      }),
+    } as Response;
+  };
+  const remotePlay = aiMod.createPlayNarrator(
+    {
+      providerKind: 'remote',
+      apiKey: 'smoke-key',
+      baseUrl: 'https://example.test/v1',
+      model: 'smoke-model',
+    },
+    { fetchImpl: mockFetch as unknown as typeof fetch },
+  );
+  assert.equal(remotePlay.provider.kind, 'remote');
+  const remoteScene = await remotePlay.provider.narrateScene({
+    beat: 'opening',
+    partyNames: [],
+  });
+  assert.equal(remoteScene.source, 'remote');
+  assert.match(remoteScene.prose, /Smoke remote/);
+
   const screensDir = path.resolve(__dirname, '../src/screens');
   for (const f of [
     'HomeScreen.tsx',
@@ -248,6 +308,15 @@ async function main() {
   assert.match(appSrc, /onOpenStills|stills/);
   assert.match(appSrc, /onCampaignChange/);
 
+  const settingsSrc = fs.readFileSync(
+    path.join(screensDir, 'SettingsScreen.tsx'),
+    'utf8',
+  );
+  assert.match(settingsSrc, /Base URL|baseUrl|setBaseUrl/);
+  assert.match(settingsSrc, /Model|setModel/);
+  assert.match(settingsSrc, /remoteError/);
+  assert.match(settingsSrc, /https:\/\/api\.openai\.com\/v1/);
+
   const sceneSrc = fs.readFileSync(
     path.join(screensDir, 'SceneScreen.tsx'),
     'utf8',
@@ -258,6 +327,7 @@ async function main() {
   assert.match(sceneSrc, /verbosity/);
   assert.match(sceneSrc, /StillFrame/);
   assert.match(sceneSrc, /createAppStillProvider|stills:/);
+  assert.match(sceneSrc, /baseUrl/);
 
   const stillsSrc = fs.readFileSync(
     path.join(screensDir, 'StillsScreen.tsx'),
@@ -286,7 +356,7 @@ async function main() {
   }
 
   console.log(
-    'smoke ok: engine + identity + narrator + map + stills/cache UI + scene loop + persist + sheet/dice UI' +
+    'smoke ok: engine + identity + narrator remote settings + map + stills/cache UI + scene loop + persist + sheet/dice UI' +
       (appImported ? ' + App import' : ' + App.tsx verified'),
   );
 }

@@ -35,7 +35,7 @@ type Props = {
  * Show-me stills use cached stub placeholders (device PersistStore).
  */
 export function SceneScreen({ campaign, onBack, onCampaignChange }: Props) {
-  const { verbosity, providerKind, apiKey } = useSettings();
+  const { verbosity, providerKind, apiKey, baseUrl, model } = useSettings();
   const map = useMemo(() => createStarterMap(), []);
   const stillProvider = useMemo(() => createAppStillProvider(), []);
 
@@ -54,9 +54,10 @@ export function SceneScreen({ campaign, onBack, onCampaignChange }: Props) {
     return createPlayNarrator({
       providerKind,
       apiKey,
-      // baseUrl not in settings yet — remote falls back to stub until configured
+      baseUrl,
+      model: model.trim() || undefined,
     });
-  }, [providerKind, apiKey]);
+  }, [providerKind, apiKey, baseUrl, model]);
 
   const applyBeat = useCallback(
     (beat: SceneBeatResult, note: string | null) => {

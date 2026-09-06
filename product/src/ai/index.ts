@@ -80,12 +80,16 @@ export function createPlayNarrator(
         fallbackNote: 'Remote not configured — using offline stub',
       };
     }
+    const model = (overrides.model ?? settings.model ?? '').trim() || undefined;
     return {
       provider: createNarratorProvider('remote', {
         ...overrides,
         baseUrl,
         apiKey,
+        model,
         enableHttp: overrides.enableHttp ?? true,
+        // Prefer real fetch when remote is fully configured (tests inject fetchImpl).
+        fetchImpl: overrides.fetchImpl,
       }),
       fallbackNote: null,
     };

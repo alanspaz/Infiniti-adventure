@@ -54,6 +54,15 @@ async function setItem(key: string, value: string): Promise<void> {
   memory.set(key, value);
 }
 
+function normalizePrefs(parsed: Partial<SettingsPrefs> | null | undefined): SettingsPrefs {
+  return {
+    verbosity: parsed?.verbosity ?? DEFAULT_PREFS.verbosity,
+    providerKind: parsed?.providerKind ?? DEFAULT_PREFS.providerKind,
+    baseUrl: typeof parsed?.baseUrl === 'string' ? parsed.baseUrl : DEFAULT_PREFS.baseUrl,
+    model: typeof parsed?.model === 'string' ? parsed.model : DEFAULT_PREFS.model,
+  };
+}
+
 /** Never log the API key. */
 export async function loadSettings(): Promise<SettingsState> {
   const apiKey = (await getItem(SECURE_KEYS.apiKey)) ?? '';
@@ -62,10 +71,7 @@ export async function loadSettings(): Promise<SettingsState> {
   if (prefsRaw) {
     try {
       const parsed = JSON.parse(prefsRaw) as Partial<SettingsPrefs>;
-      prefs = {
-        verbosity: parsed.verbosity ?? DEFAULT_PREFS.verbosity,
-        providerKind: parsed.providerKind ?? DEFAULT_PREFS.providerKind,
-      };
+      prefs = normalizePrefs(parsed);
     } catch {
       prefs = { ...DEFAULT_PREFS };
     }
@@ -74,7 +80,16 @@ export async function loadSettings(): Promise<SettingsState> {
 }
 
 export async function savePrefs(prefs: SettingsPrefs): Promise<void> {
-  await setItem(SECURE_KEYS.prefs, JSON.stringify(prefs));
+  // Persist only prefs blob (never the API key).
+  await setItem(
+    SECURE_KEYS.prefs,
+    JSON.stringify({
+      verbosity: prefs.verbosity,
+      providerKind: prefs.providerKind,
+      baseUrl: prefs.baseUrl,
+      model: prefs.model,
+    }),
+  );
 }
 
 export async function saveApiKey(apiKey: string): Promise<void> {
