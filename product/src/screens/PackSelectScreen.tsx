@@ -1,6 +1,14 @@
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { listPlaystylePacks, type PlaystylePack } from '../../engine';
+import { packCardImage } from '../images';
 import { theme } from '../theme';
 
 type Props = {
@@ -28,26 +36,39 @@ export function PackSelectScreen({ onBack, onSelectPack }: Props) {
       </Text>
 
       <ScrollView contentContainerStyle={styles.list}>
-        {packs.map((pack) => (
-          <Pressable
-            key={pack.id}
-            accessibilityRole="button"
-            onPress={() => onSelectPack(pack.id)}
-            style={({ pressed }) => [
-              styles.card,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.cardTitle}>{pack.displayName}</Text>
-            <Text style={styles.cardMeta}>
-              {pack.resources.crunch} crunch
-              {pack.resources.trackSupplies ? ' · supplies' : ''}
-              {pack.resources.heroicInspiration ? ' · inspiration' : ''}
-              {pack.resources.trackWounds ? ' · wounds' : ''}
-            </Text>
-            <Text style={styles.cardBody}>{pack.description}</Text>
-          </Pressable>
-        ))}
+        {packs.map((pack) => {
+          const art = packCardImage(pack.id);
+          return (
+            <Pressable
+              key={pack.id}
+              accessibilityRole="button"
+              onPress={() => onSelectPack(pack.id)}
+              style={({ pressed }) => [
+                styles.card,
+                pressed && styles.pressed,
+              ]}
+            >
+              {art ? (
+                <Image
+                  source={art}
+                  style={styles.cardArt}
+                  resizeMode="cover"
+                  accessibilityLabel={`${pack.displayName} art`}
+                />
+              ) : null}
+              <View style={styles.cardBodyWrap}>
+                <Text style={styles.cardTitle}>{pack.displayName}</Text>
+                <Text style={styles.cardMeta}>
+                  {pack.resources.crunch} crunch
+                  {pack.resources.trackSupplies ? ' · supplies' : ''}
+                  {pack.resources.heroicInspiration ? ' · inspiration' : ''}
+                  {pack.resources.trackWounds ? ' · wounds' : ''}
+                </Text>
+                <Text style={styles.cardBody}>{pack.description}</Text>
+              </View>
+            </Pressable>
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -89,6 +110,14 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface,
     borderRadius: 10,
+    overflow: 'hidden',
+  },
+  cardArt: {
+    width: '100%',
+    height: 120,
+    backgroundColor: theme.colors.background,
+  },
+  cardBodyWrap: {
     padding: theme.spacing.md,
   },
   cardTitle: {

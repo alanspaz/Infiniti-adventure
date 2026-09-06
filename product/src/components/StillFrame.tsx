@@ -1,6 +1,7 @@
 import React from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import type { StillResult } from '../../engine/stills';
+import { stillStubImage } from '../images';
 import { theme } from '../theme';
 
 type Props = {
@@ -22,12 +23,18 @@ const SUBJECT_LABEL: Record<string, string> = {
 };
 
 /**
- * Themed still display: real Image when uri exists, else offline placeholder frame.
+ * Themed still display: real Image when uri exists, else Sprint B stub art.
  * Colors: background #140f0c / accent #d4a054.
  */
-export function StillFrame({ still, caption = null, compact = false, playerFacing = false }: Props) {
+export function StillFrame({
+  still,
+  caption = null,
+  compact = false,
+  playerFacing = false,
+}: Props) {
   const label = SUBJECT_LABEL[still.subjectKind] ?? still.subjectKind;
-  const showImage = Boolean(still.uri && !still.placeholder);
+  const showRemote = Boolean(still.uri && !still.placeholder);
+  const stubSource = stillStubImage(still.subjectKind);
 
   return (
     <View
@@ -46,7 +53,7 @@ export function StillFrame({ still, caption = null, compact = false, playerFacin
       ) : null}
 
       <View style={[styles.frame, compact && styles.frameCompact]}>
-        {showImage && still.uri ? (
+        {showRemote && still.uri ? (
           <Image
             source={{ uri: still.uri }}
             style={styles.image}
@@ -54,17 +61,12 @@ export function StillFrame({ still, caption = null, compact = false, playerFacin
             accessibilityIgnoresInvertColors
           />
         ) : (
-          <View style={styles.placeholder}>
-            <View style={styles.ornamentOuter}>
-              <View style={styles.ornamentInner}>
-                <Text style={styles.glyph}>◈</Text>
-                <Text style={styles.placeholderTitle}>{label}</Text>
-                <Text style={styles.placeholderHint}>
-                  {playerFacing ? 'A fleeting glimpse' : 'No image bytes · stub'}
-                </Text>
-              </View>
-            </View>
-          </View>
+          <Image
+            source={stubSource}
+            style={styles.image}
+            resizeMode="cover"
+            accessibilityIgnoresInvertColors
+          />
         )}
       </View>
 
@@ -125,43 +127,6 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
-  },
-  placeholder: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: theme.spacing.md,
-  },
-  ornamentOuter: {
-    borderWidth: 1,
-    borderColor: theme.colors.accent,
-    borderRadius: 8,
-    padding: 3,
-    width: '88%',
-  },
-  ornamentInner: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 6,
-    paddingVertical: theme.spacing.md,
-    paddingHorizontal: theme.spacing.sm,
-    alignItems: 'center',
-    backgroundColor: '#1a1410',
-  },
-  glyph: {
-    color: theme.colors.accent,
-    fontSize: 28,
-    marginBottom: 4,
-  },
-  placeholderTitle: {
-    color: theme.colors.text,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  placeholderHint: {
-    color: theme.colors.textMuted,
-    fontSize: 11,
-    marginTop: 4,
   },
   message: {
     color: theme.colors.text,

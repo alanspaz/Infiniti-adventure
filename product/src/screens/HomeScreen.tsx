@@ -1,6 +1,14 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import type { CampaignSave } from '../../engine';
+import { appImages } from '../images';
 import { theme } from '../theme';
 
 type Props = {
@@ -24,7 +32,18 @@ export function HomeScreen({
   statusNote = null,
 }: Props) {
   return (
-    <View style={styles.root}>
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.root}
+      keyboardShouldPersistTaps="handled"
+    >
+      <Image
+        source={appImages.homeHero}
+        style={styles.hero}
+        resizeMode="cover"
+        accessibilityLabel="Infinite Adventure"
+      />
+
       <Text style={styles.title}>Infinite Adventure</Text>
       <Text style={styles.subtitle}>
         A solo phone RPG. You travel alone unless you form a party — companions
@@ -92,16 +111,29 @@ export function HomeScreen({
       >
         <Text style={styles.buttonLabel}>Settings</Text>
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
+  scroll: {
     flex: 1,
     backgroundColor: theme.colors.background,
+  },
+  root: {
     padding: theme.spacing.lg,
+    paddingBottom: theme.spacing.xl,
     justifyContent: 'center',
+    flexGrow: 1,
+  },
+  hero: {
+    width: '100%',
+    height: 160,
+    borderRadius: 12,
+    marginBottom: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
   },
   title: {
     color: theme.colors.accent,

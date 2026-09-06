@@ -343,6 +343,18 @@ async function main() {
   assert.match(playShellSrc, /DiceScreen/);
   assert.match(playShellSrc, /StillsScreen/);
 
+  const assetsDir = path.resolve(__dirname, '../assets');
+  assert.ok(fs.existsSync(path.join(assetsDir, 'icon.png')), 'icon.png missing');
+  assert.ok(fs.existsSync(path.join(assetsDir, 'splash.png')), 'splash.png missing');
+  assert.ok(fs.existsSync(path.join(assetsDir, 'home-hero.png')), 'home-hero.png missing');
+
+  const appJson = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, '../app.json'), 'utf8'),
+  );
+  assert.equal(appJson.expo.icon, './assets/icon.png');
+  assert.equal(appJson.expo.splash.image, './assets/splash.png');
+  assert.equal(appJson.expo.splash.backgroundColor, '#140f0c');
+
   const tabBarPath = path.resolve(__dirname, '../src/components/PlayTabBar.tsx');
   assert.ok(fs.existsSync(tabBarPath), 'PlayTabBar.tsx missing');
 

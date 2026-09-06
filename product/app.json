@@ -5,13 +5,23 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#140f0c"
+    },
     "platforms": ["ios", "android"],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.infiniteadventure.app"
     },
     "android": {
-      "package": "com.infiniteadventure.app"
+      "package": "com.infiniteadventure.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#140f0c"
+      }
     }
   }
 }
