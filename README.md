@@ -18,11 +18,42 @@ Solo phone RPG with an AI narrator. Rules, dice, maps, and saves on-device; ask 
 - Stills: stub placeholder/cacheKey + device PersistStore cache; StillFrame UI; Stills gallery; Scene “show me”; remote not configured
 - App screens: Home (Continue / New campaign), Settings, Pack select, Identity, **PlayShell tabs** (Story stays mounted; Quest / Character / Companions / Items / Map / Settings), Dice, Stills
 
-## Run locally
+## Run locally (Windows + Expo Go)
 
-From product/: install, expo start.
+App lives under `product/` (Expo SDK **57**). Do **not** start Metro from the repo root.
 
-Backend verification (no device): tsc --noEmit, test suite, smoke script.
+**Windows path:**
+
+    C:\Users\alank\Desktop\Infiniti-adventure\product
+
+**Node:** prefer **22 LTS** (20 OK; avoid 24). `product/.nvmrc` pins 22.
+
+**Expo Go** on the phone must match **SDK 57**.
+
+Copy-paste (PowerShell / cmd):
+
+    cd C:\Users\alank\Desktop\Infiniti-adventure
+    git pull
+    cd product
+    npm install
+    npm run start:clear
+
+Tunnel if LAN/firewall blocks Metro:
+
+    npm run start:tunnel
+
+Or clear + tunnel: `npm run start:tunnel:clear`
+
+Equiv: `npx expo start -c` / `npx expo start --tunnel`
+
+Scripts fail loudly if cwd is wrong (see `product/scripts/ensure-product-cwd.js`).
+
+Full detail: `product/README.md`.
+
+Backend verification (no device), from `product/`:
+
+    npm test
+    npx tsc --noEmit
 
 ## Upload to GitHub
 
@@ -30,6 +61,7 @@ Exclude product/node_modules and product/.expo. Handoff zip is flat at repo root
 
 ## Docs
 
+- product/README.md — Windows Expo Go / Metro runbook
 - PRODUCT.md — locked product brief
 - CREW.md — next ticket pointer (companion UX / device playtest)
 - board/ — backlog / done
@@ -42,8 +74,8 @@ Background #140f0c, accent #d4a054. Portrait-first; tablets allowed.
 
 ## Node version
 
-Prefer Node 20 or 22 LTS (package engines: >=20 <25). Node 24 may break Expo Metro bundling on Windows.
+**Prefer Node 22 LTS** over Node 24 (package engines: >=20 <25). Node 24 may break Expo Metro bundling on Windows. Use `product/.nvmrc`.
 
 ## Metro bundling note
 
-If Metro fails to start with a transformFile TypeError: install babel-preset-expo as a direct dependency, keep metro.config.js from expo/metro-config, reinstall deps under product/, and use Node 22 LTS with expo start --clear.
+`babel-preset-expo` is a direct dependency; `metro.config.js` uses `expo/metro-config`. If Metro fails with a `transformFile` TypeError: reinstall under `product/`, use Node 22, then `npm run start:clear`.

@@ -3,12 +3,16 @@
   "version": "1.0.0",
   "main": "expo/AppEntry.js",
   "scripts": {
+    "prestart": "node scripts/ensure-product-cwd.js",
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "test": "tsx --test engine/*.test.ts src/persist/*.test.ts src/settings/*.test.ts src/ai/*.test.ts",
-    "typecheck": "tsc --noEmit",
-    "smoke": "tsx scripts/smoke.ts"
+    "start:clear": "node scripts/ensure-product-cwd.js && expo start -c",
+    "start:tunnel": "node scripts/ensure-product-cwd.js && expo start --tunnel",
+    "start:tunnel:clear": "node scripts/ensure-product-cwd.js && expo start -c --tunnel",
+    "android": "node scripts/ensure-product-cwd.js && expo start --android",
+    "ios": "node scripts/ensure-product-cwd.js && expo start --ios",
+    "test": "node scripts/ensure-product-cwd.js && tsx --test engine/*.test.ts src/persist/*.test.ts src/settings/*.test.ts src/ai/*.test.ts",
+    "typecheck": "node scripts/ensure-product-cwd.js && tsc --noEmit",
+    "smoke": "node scripts/ensure-product-cwd.js && tsx scripts/smoke.ts"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
