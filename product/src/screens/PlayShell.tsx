@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import {
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { CampaignSave } from '../../engine';
 import { CampaignStateProvider, useCampaignState } from '../campaign';
 import { CombatRail } from '../components/CombatRail';
@@ -54,6 +57,7 @@ function PlayShellInner({ onLeave }: { onLeave: () => void }) {
   const { state, campaign, replaceCampaign } = useCampaignState();
   const [surface, setSurface] = useState<PlaySurfaceId>('story');
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const sideBySide = width >= SIDE_PANEL_BREAKPOINT && surface !== 'story';
 
   const subtitle = state.character
@@ -66,8 +70,16 @@ function PlayShellInner({ onLeave }: { onLeave: () => void }) {
 
   const panel = renderPanel(surface, campaign, replaceCampaign);
 
+  // UX-01: lift play chrome with keyboard; pad Android system nav under CombatRail.
+  const bottomPad = Math.max(insets.bottom, 8);
+
   return (
-    <View style={styles.root}>
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+    >
+      <View style={[styles.root, { paddingTop: Math.max(insets.top, 0) }]}>
       <View style={styles.header}>
         <View style={styles.headerText}>
           <Text style={styles.kicker}>Adventure</Text>
@@ -136,8 +148,9 @@ function PlayShellInner({ onLeave }: { onLeave: () => void }) {
         ) : null}
       </View>
 
-      <CombatRail />
-    </View>
+      <CombatRail bottomInset={bottomPad} />
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -208,7 +221,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.lg,
+    paddingTop: theme.spacing.sm,
     paddingBottom: theme.spacing.sm,
     backgroundColor: theme.colors.background,
   },

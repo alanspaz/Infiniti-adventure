@@ -21,7 +21,12 @@ const ACTIONS: {
  * Base44-style combat rail: HP readout + action chips.
  * Layout-only resolution stubs — writes combat slice of CampaignState.
  */
-export function CombatRail() {
+type CombatRailProps = {
+  /** UX-01: Android/iOS system nav inset so rail is never covered. */
+  bottomInset?: number;
+};
+
+export function CombatRail({ bottomInset = 0 }: CombatRailProps) {
   const { state, runCombatAction } = useCampaignState();
   const derived = useMemo(
     () => (state.character ? deriveStats(state.character) : null),
@@ -34,7 +39,10 @@ export function CombatRail() {
   const active = state.combat.mode;
 
   return (
-    <View style={styles.rail} accessibilityRole="summary">
+    <View
+      style={[styles.rail, bottomInset > 0 ? { paddingBottom: bottomInset } : null]}
+      accessibilityRole="summary"
+    >
       <View style={styles.readout}>
         <Text style={styles.readoutKicker}>Combat</Text>
         <Text style={styles.hpLine}>

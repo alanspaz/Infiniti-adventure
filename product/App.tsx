@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { CampaignSave } from './engine';
 import { SettingsProvider } from './src/settings/SettingsContext';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -52,6 +53,7 @@ export default function App() {
   }, []);
 
   return (
+    <SafeAreaProvider>
     <SettingsProvider>
       {screen === 'home' ? (
         <HomeScreen
@@ -106,5 +108,6 @@ export default function App() {
       ) : null}
       <StatusBar style="light" />
     </SettingsProvider>
+    </SafeAreaProvider>
   );
 }

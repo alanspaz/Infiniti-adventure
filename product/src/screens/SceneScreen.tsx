@@ -535,32 +535,10 @@ export function SceneScreen({
           </>
         )}
 
-        <View style={styles.composeRow}>
-          <TextInput
-            value={action}
-            onChangeText={setAction}
-            placeholder="What do you do?"
-            placeholderTextColor={theme.colors.textMuted}
-            style={styles.input}
-            editable={!busy}
-            multiline
-            accessibilityLabel="Player action"
-          />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Send action"
-            onPress={submitAction}
-            disabled={busy || !action.trim()}
-            style={({ pressed }) => [
-              styles.send,
-              pressed && styles.pressed,
-              (busy || !action.trim()) && styles.disabled,
-            ]}
-          >
-            <Text style={styles.sendLabel}>{busy ? '…' : '➤'}</Text>
-          </Pressable>
-        </View>
+      </ScrollView>
 
+      {/* UX-01: Tale composer pinned to bottom of play story column */}
+      <View style={styles.composerDock}>
         <View style={styles.row}>
           <Pressable
             accessibilityRole="button"
@@ -605,7 +583,34 @@ export function SceneScreen({
             </Pressable>
           ) : null}
         </View>
-      </ScrollView>
+
+        <View style={styles.composeRow}>
+          <TextInput
+            value={action}
+            onChangeText={setAction}
+            placeholder="What do you do?"
+            placeholderTextColor={theme.colors.textMuted}
+            style={styles.input}
+            editable={!busy}
+            multiline
+            accessibilityLabel="Player action"
+            blurOnSubmit={false}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Send action"
+            onPress={submitAction}
+            disabled={busy || !action.trim()}
+            style={({ pressed }) => [
+              styles.send,
+              pressed && styles.pressed,
+              (busy || !action.trim()) && styles.disabled,
+            ]}
+          >
+            <Text style={styles.sendLabel}>{busy ? '…' : '➤'}</Text>
+          </Pressable>
+        </View>
+      </View>
     </View>
   );
 }
@@ -618,7 +623,8 @@ const styles = StyleSheet.create({
   },
   root: {
     padding: theme.spacing.md,
-    paddingBottom: theme.spacing.xl,
+    paddingBottom: theme.spacing.md,
+    flexGrow: 1,
   },
   back: {
     alignSelf: 'flex-start',
@@ -747,8 +753,9 @@ const styles = StyleSheet.create({
   },
   prose: {
     color: theme.colors.text,
-    fontSize: 16,
-    lineHeight: 25,
+    // UX-02: larger DM/narrator bubble text for phone readability
+    fontSize: 18,
+    lineHeight: 28,
   },
   checkCard: {
     borderWidth: 1,
@@ -777,11 +784,18 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.sm,
     marginTop: theme.spacing.xs,
   },
+  composerDock: {
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+    paddingBottom: theme.spacing.sm,
+  },
   composeRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: theme.spacing.sm,
-    marginBottom: theme.spacing.md,
   },
   input: {
     flex: 1,
@@ -811,7 +825,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: theme.spacing.sm,
-    marginBottom: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
   },
   secondary: {
     borderWidth: 1,

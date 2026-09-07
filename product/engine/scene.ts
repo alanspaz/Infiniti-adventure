@@ -31,6 +31,7 @@ import {
   type StillResult,
 } from './stills';
 import { withSession, type CampaignSave } from './save';
+import { tickWorldAmbient } from './ambient';
 
 export type SuggestedCheck = {
   ability: AbilityKey;
@@ -316,6 +317,33 @@ export async function resolveSceneBeat(
     travel = detectTravelSuggestion(action, graph, locationId);
   }
 
+  // Map-truth for stub "where am I" — same source as Map panel (pre-travel).
+  let locationHint: {
+    name: string;
+    description?: string;
+    nearby: Array<{ toName: string; label: string }>;
+  } | null = null;
+  try {
+    const hereNow = whereAmI(graph, locationId);
+    locationHint = {
+      name: hereNow.name,
+      description: hereNow.description,
+      nearby: hereNow.exits.map((e) => ({
+        toName: e.toName,
+        label: e.label,
+      })),
+    };
+  } catch {
+    locationHint = null;
+  }
+
+  // NARR-02b: wait / fuel advances ambient scene clock on CampaignState flags.
+  const ambient = tickWorldAmbient({
+    flags: input.campaign.flags,
+    locationId,
+    playerAction: action || undefined,
+  });
+
   // Check / travel stay structured (UI cards / Map). Do not inject into prose.
   const narratorResult = await narrator.narrateScene({
     playstylePackId: input.campaign.playstylePackId,
@@ -326,6 +354,8 @@ export async function resolveSceneBeat(
     logSummary: input.campaign.session.logSummary || undefined,
     verbosity,
     beat,
+    locationHint,
+    worldTick: ambient.hint,
   });
 
   const prose = narratorResult.prose;
@@ -354,6 +384,14 @@ export async function resolveSceneBeat(
 
   if (travel) {
     campaign = setCampaignLocation(campaign, travel.toNodeId);
+  }
+
+  if (Object.keys(ambient.flagPatch).length > 0) {
+    campaign = {
+      ...campaign,
+      flags: { ...campaign.flags, ...ambient.flagPatch },
+      updatedAt: new Date().toISOString(),
+    };
   }
 
   let where: WhereAmIResult | null = null;

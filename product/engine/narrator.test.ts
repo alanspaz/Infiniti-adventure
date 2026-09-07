@@ -105,7 +105,7 @@ describe('narrator provider', () => {
       partyNames: [],
       verbosity: 'standard',
     });
-    assert.match(look.prose, /take in the scene|Details sharpen/i);
+    assert.match(look.prose, /take in the scene|Details sharpen|gaze settles|study the space/i);
     assert.doesNotMatch(look.prose, /look around the common room carefully/i);
     assert.ok(look.prose.length > 20);
 
@@ -115,7 +115,7 @@ describe('narrator provider', () => {
       playerAction: 'I go down to the cellar',
       partyNames: [],
     });
-    assert.match(go.prose, /footing|Thresholds|roads|rooms/i);
+    assert.match(go.prose, /footing|Thresholds|roads|rooms|path|Forward|Doorframes/i);
     assert.doesNotMatch(go.prose, /go down to the cellar/i);
   });
 
@@ -209,6 +209,81 @@ describe('narrator provider', () => {
       checkHint: 'Check perception (wisdom) → success',
     });
     assert.match(result.prose, /perception|success/i);
+  });
+
+
+
+  it('stub uses worldTick prose for wait instead of repeat pool', async () => {
+    const provider = createNarratorProvider('stub');
+    const result = await provider.narrateScene({
+      beat: 'custom',
+      playerAction: 'I wait',
+      partyNames: [],
+      worldTick: {
+        kind: 'hearth',
+        isWait: true,
+        isFuel: false,
+        hearthFuel: 3,
+        lastWaitTick: 1,
+        prose: 'You wait. The fire flickers — bright one breath, shy the next.',
+      },
+    });
+    assert.match(result.prose, /fire flickers/i);
+    assert.doesNotMatch(result.prose, /choice ripples|press the moment/i);
+  });
+
+  it('stub answers where-am-I from locationHint (Map truth)', async () => {
+    const provider = createNarratorProvider('stub');
+    const result = await provider.narrateScene({
+      beat: 'custom',
+      playerAction: 'where am I?',
+      partyNames: [],
+      locationHint: {
+        name: 'Kettle Common',
+        description: 'A warm inn common room with a soot-black kettle.',
+        nearby: [
+          { toName: 'Cellar Stairs', label: 'down to cellar' },
+          { toName: 'Front Porch', label: 'out the door' },
+        ],
+      },
+    });
+    assert.match(result.prose, /Kettle Common/i);
+    assert.match(result.prose, /soot-black kettle|warm inn/i);
+    assert.match(result.prose, /Nearby/i);
+    assert.match(result.prose, /Cellar Stairs|Front Porch/i);
+    assert.doesNotMatch(result.prose, /where am I/i);
+  });
+
+  it('stub where-are-we uses nearby when present', async () => {
+    const provider = createNarratorProvider('stub');
+    const result = await provider.narrateScene({
+      beat: 'custom',
+      playerAction: 'Where are we?',
+      locationHint: {
+        name: 'Emberford Gate',
+        nearby: [{ toName: 'Market Row', label: 'into town' }],
+      },
+    });
+    assert.match(result.prose, /Emberford Gate/);
+    assert.match(result.prose, /Market Row/);
+  });
+
+  it('stub varies replies for different inputs of same flavor', async () => {
+    const provider = createNarratorProvider('stub');
+    const a = await provider.narrateScene({
+      beat: 'custom',
+      playerAction: 'I carefully look at the rafters',
+      partyNames: [],
+    });
+    const b = await provider.narrateScene({
+      beat: 'custom',
+      playerAction: 'I glance toward the window and observe the street',
+      partyNames: [],
+    });
+    // Different inputs should not produce identical stub bodies in a short window.
+    assert.notEqual(a.prose, b.prose);
+    assert.ok(a.prose.length > 20);
+    assert.ok(b.prose.length > 20);
   });
 
   it('remote enableHttp uses injected fetch when configured', async () => {

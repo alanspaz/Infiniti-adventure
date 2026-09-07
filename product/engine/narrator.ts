@@ -37,6 +37,14 @@ export type ChatCompletionResponse = {
 
 export type NarratorBeat = 'opening' | 'continue' | 'custom';
 
+/** Map-truth hint for stub location answers (same source as Map panel). */
+export type NarratorLocationHint = {
+  name: string;
+  description?: string;
+  /** Nearby exits: destination name + travel label. */
+  nearby: Array<{ toName: string; label: string }>;
+};
+
 export type NarratorSceneRequest = {
   playstylePackId?: string | null;
   locationId?: string | null;
@@ -49,6 +57,23 @@ export type NarratorSceneRequest = {
   beat?: NarratorBeat;
   /** Optional dice/check outcome line for stub prose coloring. */
   checkHint?: string;
+  /**
+   * Human-readable location + nearby (from whereAmI).
+   * Used by stub for "where am I" / location questions — never raw location ids.
+   */
+  locationHint?: NarratorLocationHint | null;
+  /**
+   * NARR-02b world-tick from ambient scene clock (wait / fuel / hearth).
+   * When prose is set, stub uses it instead of the tiny repeat pool.
+   */
+  worldTick?: {
+    kind: string;
+    isWait: boolean;
+    isFuel: boolean;
+    hearthFuel: number | null;
+    lastWaitTick: number;
+    prose: string | null;
+  } | null;
 };
 
 export type NarratorSceneSource =
@@ -136,20 +161,90 @@ const ACTION_FLAVOR_RE: Array<{ flavor: StubActionFlavor; re: RegExp }> = [
   },
 ];
 
-const FLAVOR_LINES: Record<StubActionFlavor, string> = {
-  look: 'You take in the scene. Details sharpen — light, sound, and what might matter next.',
-  travel:
+/** Varied pack lines per flavor — stub must not feel like a tiny repeat pool. */
+const FLAVOR_POOLS: Record<StubActionFlavor, string[]> = {
+  look: [
+    'You take in the scene. Details sharpen — light, sound, and what might matter next.',
+    'Your gaze settles. Edges resolve: exits, faces, and the small things worth noticing.',
+    'You study the space. Something useful — or dangerous — comes into focus.',
+  ],
+  travel: [
     'You set yourself toward a new footing. Thresholds, roads, and rooms answer by shifting under your feet.',
-  talk: 'Words land. Faces and silences rearrange; someone — or something — has heard you.',
-  fight:
+    'You commit to the path. Distance closes; the map of the moment redraws around you.',
+    'Forward, then. Doorframes and trail markers lean toward wherever you are going.',
+  ],
+  talk: [
+    'Words land. Faces and silences rearrange; someone — or something — has heard you.',
+    'You speak into the hush. Attention turns; answers or new questions gather close.',
+    'Your voice shapes the beat. A reply, a glance, or a careful quiet answers back.',
+  ],
+  fight: [
     'Steel and will meet the moment. The clash resolves into new openings and fresh risk.',
-  search:
+    'You commit to the strike. The exchange ends with bloodless possibility and sharper stakes.',
+    'Combat focuses the room. Footing, guard, and openings rearrange after the blow.',
+  ],
+  search: [
     'You dig for what is hidden. A clue, a trap, or empty air — the world gives something back.',
-  rest: 'You ease the pace. Breath returns; the next threat or kindness has a little more room.',
-  take: 'Your hands claim a change. Weight, warmth, or absence marks what you took into the tale.',
-  general:
+    'Fingers and eyes hunt the margins. The search pays in detail, if not always treasure.',
+    'You comb the place. Dust, marks, and oddities answer whether fortune does or not.',
+  ],
+  rest: [
+    'You ease the pace. Breath returns; the next threat or kindness has a little more room.',
+    'You pause. Tension loosens a notch — enough to hear what the quiet was hiding.',
+    'A short rest settles in. Strength gathers for whatever stands on the other side of stillness.',
+  ],
+  take: [
+    'Your hands claim a change. Weight, warmth, or absence marks what you took into the tale.',
+    'You take what the moment offers. Inventory — and consequence — shifts with the grasp.',
+    'Possession changes hands. The world notes what you claimed and what you left behind.',
+  ],
+  general: [
     'Your choice ripples outward. Doors, faces, and unfinished business lean toward what comes next.',
+    'The tale answers your intent. Threads tug; the scene leans into what you meant to do.',
+    'Action settles into place. The world rearranges around the choice you just made.',
+    'You press on. Possibility thickens — not a repeat of the last beat, but a fresh hinge.',
+  ],
 };
+
+/** Location / orientation questions — answer from Map-truth locationHint. */
+const LOCATION_QUESTION_RE =
+  /\b(where\s+am\s+i|where\s+are\s+we|where\s+is\s+this|where\s+do\s+i\s+(stand|sit|find\s+myself)|what(?:'s|\s+is)\s+(?:my\s+)?location|what(?:'s|\s+is)\s+nearby|where\s+can\s+i\s+go|exits?\s+here)\b/i;
+
+/** Recent stub bodies — avoid identical replies for different inputs in a short window. */
+const RECENT_STUB_WINDOW = 8;
+const recentStubBodies: string[] = [];
+
+function hashSeed(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function rememberStubBody(body: string): void {
+  recentStubBodies.push(body);
+  while (recentStubBodies.length > RECENT_STUB_WINDOW) {
+    recentStubBodies.shift();
+  }
+}
+
+function pickVariedLine(pool: string[], seedKey: string): string {
+  if (pool.length === 0) return STUB_SAFE_PROSE;
+  const start = hashSeed(seedKey) % pool.length;
+  for (let i = 0; i < pool.length; i += 1) {
+    const candidate = pool[(start + i) % pool.length]!;
+    if (!recentStubBodies.includes(candidate)) {
+      rememberStubBody(candidate);
+      return candidate;
+    }
+  }
+  // All recent — still rotate off the seed so different inputs diverge.
+  const fallback = pool[start]!;
+  rememberStubBody(fallback);
+  return fallback;
+}
 
 function detectActionFlavor(action: string | undefined): StubActionFlavor {
   const text = (action ?? '').trim();
@@ -160,13 +255,44 @@ function detectActionFlavor(action: string | undefined): StubActionFlavor {
   return 'general';
 }
 
+function isLocationQuestion(action: string | undefined): boolean {
+  const text = (action ?? '').trim();
+  if (!text) return false;
+  return LOCATION_QUESTION_RE.test(text);
+}
+
+/** Build Map-truth orientation prose (same facts as Map panel). */
+function proseForLocationHint(hint: NarratorLocationHint | null | undefined): string {
+  if (!hint?.name?.trim()) {
+    return 'You are somewhere the map has not named yet. Look again once the trail marks settle.';
+  }
+  const name = hint.name.trim();
+  const desc = (hint.description ?? '').replace(/\s+/g, ' ').trim();
+  const nearby = hint.nearby ?? [];
+  const nearbyBit =
+    nearby.length === 0
+      ? 'Nothing obvious is nearby from here.'
+      : `Nearby: ${nearby
+          .map((e) => {
+            const dest = e.toName?.trim() || 'somewhere';
+            const label = e.label?.trim();
+            return label ? `${dest} (${label})` : dest;
+          })
+          .join('; ')}.`;
+  if (desc) {
+    return `You are at ${name}. ${desc} ${nearbyBit}`;
+  }
+  return `You are at ${name}. ${nearbyBit}`;
+}
+
 /** Action-aware stub body — never echoes raw playerAction into prose. */
 function flavorBodyForAction(
   action: string | undefined,
   packFallback: string | null,
 ): string {
   const flavor = detectActionFlavor(action);
-  const flavored = FLAVOR_LINES[flavor];
+  const pool = FLAVOR_POOLS[flavor];
+  const flavored = pickVariedLine(pool, `${flavor}|${(action ?? '').trim()}`);
   if (packFallback?.trim()) {
     // Lead with action flavor, then pack color — still no raw echo.
     return `${flavored} ${packFallback.trim()}`;
@@ -269,18 +395,26 @@ function resolveStubProse(request: NarratorSceneRequest): {
     }
   } else if (beat === 'custom') {
     // Never echo raw playerAction into player-facing prose.
-    // Prefer action-flavor lines so every Tale submit feels answered.
-    const packFallback = stubs?.customBeatFallback?.trim() || null;
-    const flavored = flavorBodyForAction(request.playerAction, null);
-    if (packFallback) {
-      const prefix = stubs?.customBeatPrefix?.trim();
-      body = prefix
-        ? `${prefix} ${flavored} ${packFallback}`
-        : `${flavored} ${packFallback}`;
-      source = 'pack-template';
-    } else {
-      body = flavored || FALLBACK_CUSTOM;
+    // World-tick (wait/fuel) → ambient prose. Location Q → Map-truth. Else varied flavor.
+    if (request.worldTick?.prose?.trim()) {
+      body = request.worldTick.prose.trim();
       source = 'canned';
+    } else if (isLocationQuestion(request.playerAction)) {
+      body = proseForLocationHint(request.locationHint);
+      source = 'canned';
+    } else {
+      const packFallback = stubs?.customBeatFallback?.trim() || null;
+      const flavored = flavorBodyForAction(request.playerAction, null);
+      if (packFallback) {
+        const prefix = stubs?.customBeatPrefix?.trim();
+        body = prefix
+          ? `${prefix} ${flavored} ${packFallback}`
+          : `${flavored} ${packFallback}`;
+        source = 'pack-template';
+      } else {
+        body = flavored || FALLBACK_CUSTOM;
+        source = 'canned';
+      }
     }
   } else if (beat === 'opening') {
     body = CANNED_OPENING;
