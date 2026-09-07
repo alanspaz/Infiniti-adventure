@@ -66,10 +66,13 @@ function PlayShellInner({ onLeave }: { onLeave: () => void }) {
 
   const panel = renderPanel(surface, campaign, replaceCampaign, state.title);
 
-  // UX-01: lift play chrome with keyboard; pad Android system nav under CombatRail.
-  const bottomPad = Math.max(insets.bottom, 8);
+  // UX-01b: assume Android 3-button nav visible — aggressive clearance.
+  // Keep inset on the OUTER wrapper so KeyboardAvoidingView cannot cancel it.
+  const ANDROID_NAV_ASSUME = 48;
+  const bottomPad = Math.max(insets.bottom, ANDROID_NAV_ASSUME) + 16;
 
   return (
+    <View style={[styles.root, { paddingBottom: bottomPad }]}>
     <KeyboardAvoidingView
       style={styles.root}
       behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
@@ -107,6 +110,7 @@ function PlayShellInner({ onLeave }: { onLeave: () => void }) {
             campaign={campaign}
             onCampaignChange={replaceCampaign}
             embedded
+            bottomInset={0}
             onOpenStills={() => setSurface('stills')}
           />
         </View>
@@ -137,9 +141,10 @@ function PlayShellInner({ onLeave }: { onLeave: () => void }) {
         ) : null}
       </View>
 
-      <CombatRail bottomInset={bottomPad} />
+      <CombatRail bottomInset={0} />
       </View>
     </KeyboardAvoidingView>
+    </View>
   );
 }
 

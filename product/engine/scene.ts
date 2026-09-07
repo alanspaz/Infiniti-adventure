@@ -538,7 +538,7 @@ export async function resolveSceneBeat(
     }
   }
 
-  // NARR-02b: wait / fuel advances ambient scene clock on CampaignState flags.
+  // NARR-02c: wait / fuel advances ambient scene clock at CURRENT location.
   const ambient = tickWorldAmbient({
     flags: input.campaign.flags,
     locationId,

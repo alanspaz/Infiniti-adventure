@@ -74,14 +74,63 @@ describe('narrator provider', () => {
       playstylePackId: 'hearthlight',
       beat: 'opening',
       verbosity: 'lush',
+      locationHint: {
+        name: 'Common Room',
+        description: 'Benches, a long bar, and a hearth big enough to dry wet cloaks.',
+        nearby: [
+          { toName: 'The Copper Kettle', label: 'back to the inn threshold' },
+          { toName: 'Inn Cellar', label: 'cellar stairs' },
+        ],
+      },
+      worldTick: {
+        kind: 'hearth',
+        isWait: false,
+        isFuel: false,
+        hearthFuel: 3,
+        lastWaitTick: 0,
+        prose: null,
+      },
     });
     const short = await provider.narrateScene({
       playstylePackId: 'hearthlight',
       beat: 'opening',
       verbosity: 'short',
+      locationHint: {
+        name: 'Common Room',
+        description: 'Benches, a long bar, and a hearth big enough to dry wet cloaks.',
+        nearby: [{ toName: 'Inn Cellar', label: 'cellar stairs' }],
+      },
     });
     assert.ok(lush.prose.length > short.prose.length);
-    assert.match(lush.prose, /Soft detail/i);
+    // NARR-03: lush = concrete location/pack facts, not fluff template.
+    assert.doesNotMatch(
+      lush.prose,
+      /Soft detail gathers|texture, light, and quiet possibility/i,
+    );
+    assert.match(lush.prose, /Common Room|hearth|Exits and nearby|Copper Kettle|Inn Cellar/i);
+  });
+
+  it('lush verbosity rejects fluff-only padding', async () => {
+    resetPlaystylePackRegistry();
+    const provider = createNarratorProvider('stub');
+    const lush = await provider.narrateScene({
+      beat: 'custom',
+      playerAction: 'I look around',
+      verbosity: 'lush',
+      locationHint: {
+        name: 'Emberford',
+        description: 'A riverside town of brick chimneys, market stalls, and friendly noise.',
+        nearby: [
+          { toName: 'The Copper Kettle', label: 'enter The Copper Kettle' },
+          { toName: 'Brightanvil Smithy', label: 'visit Brightanvil Smithy' },
+        ],
+      },
+    });
+    assert.doesNotMatch(
+      lush.prose,
+      /Soft detail gathers|quiet possibility|without crowding your choice/i,
+    );
+    assert.match(lush.prose, /Emberford|chimneys|Copper Kettle|Brightanvil|Exits and nearby/i);
   });
 
   it('empty party remains valid (no companion injection)', async () => {
@@ -203,10 +252,39 @@ describe('narrator provider', () => {
       playstylePackId: 'hearthlight',
       beat: 'continue',
       partyNames: [],
+      locationHint: {
+        name: 'Common Room',
+        description: 'Benches, a long bar, and a hearth big enough to dry wet cloaks.',
+        nearby: [{ toName: 'Inn Cellar', label: 'cellar stairs' }],
+      },
     });
     assert.equal(result.source, 'pack-template');
-    assert.match(result.prose, /Embers settle/i);
-    assert.match(result.prose, /walk alone/i);
+    // May pick pack continue or a place-varied continue — never empty / fluff-only.
+    assert.ok(result.prose.length > 20);
+    assert.match(result.prose, /walk alone|Embers settle|Common Room|moment holds|paths still wait/i);
+    assert.doesNotMatch(result.prose, /Soft detail gathers/i);
+  });
+
+  it('stub continue does not spam identical consecutive lines', async () => {
+    resetPlaystylePackRegistry();
+    const provider = createNarratorProvider('stub');
+    const lines: string[] = [];
+    for (let turn = 1; turn <= 4; turn += 1) {
+      const result = await provider.narrateScene({
+        playstylePackId: 'hearthlight',
+        beat: 'continue',
+        partyNames: [],
+        turn,
+        locationId: 'interior.kettle-common',
+        locationHint: {
+          name: 'Common Room',
+          description: 'Benches, a long bar, and a hearth big enough to dry wet cloaks.',
+          nearby: [{ toName: 'The Copper Kettle', label: 'back to the inn threshold' }],
+        },
+      });
+      lines.push(result.prose);
+    }
+    assert.ok(new Set(lines).size >= 2);
   });
 
   it('stub custom does not echo raw playerAction', async () => {

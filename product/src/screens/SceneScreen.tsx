@@ -33,6 +33,8 @@ type Props = {
   onCampaignChange: (campaign: CampaignSave) => void;
   embedded?: boolean;
   onBack?: () => void;
+  /** UX-01b: extra composer clearance (PlayShell may own outer nav pad). */
+  bottomInset?: number;
   /** Optional: open Stills gallery from Story (preserves T-019 access). */
   onOpenStills?: () => void;
 };
@@ -133,6 +135,7 @@ export function SceneScreen({
   onCampaignChange,
   embedded = false,
   onBack,
+  bottomInset = 0,
   onOpenStills,
 }: Props) {
   const { verbosity, providerKind, apiKey, baseUrl, model } = useSettings();
@@ -162,10 +165,28 @@ export function SceneScreen({
 
   const applyBeat = useCallback(
     (beat: SceneBeatResult) => {
-      const prose = playerFacingProse(beat.prose);
+      let prose = playerFacingProse(beat.prose);
       const playerLine = pendingPlayerLine.current;
       pendingPlayerLine.current = null;
       const placeLine = naturalPlaceLine(beat.where);
+      // NARR-02c: never stack identical consecutive narrator lines.
+      const prior = beatsRef.current;
+      const lastNarr =
+        prior.length > 0 && !prior[prior.length - 1]!.id.startsWith('pending-')
+          ? prior[prior.length - 1]!
+          : prior.length > 1
+            ? prior[prior.length - 2]!
+            : null;
+      if (
+        lastNarr &&
+        lastNarr.prose.trim() === prose.trim() &&
+        (playerLine ?? '') === (lastNarr.playerLine ?? '')
+      ) {
+        const whereName = beat.where?.name?.trim();
+        prose = whereName
+          ? `${prose} The beat at ${whereName} edges forward — a new sound, a shifted light.`
+          : `${prose} The beat edges forward — a new sound, a shifted light.`;
+      }
       const entry: StoryBeat = {
         id: `${beat.campaign.session.turn}-${Date.now()}`,
         prose,
@@ -538,7 +559,12 @@ export function SceneScreen({
       </ScrollView>
 
       {/* UX-01: Tale composer pinned to bottom of play story column */}
-      <View style={styles.composerDock}>
+      <View
+        style={[
+          styles.composerDock,
+          bottomInset > 0 ? { paddingBottom: theme.spacing.sm + bottomInset } : null,
+        ]}
+      >
         <View style={styles.row}>
           <Pressable
             accessibilityRole="button"

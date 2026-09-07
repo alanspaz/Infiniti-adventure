@@ -381,9 +381,77 @@ function lastUserContent(messages: ChatMessage[]): string {
   return '';
 }
 
+/** NARR-03: lush adds concrete Map/ambient facts — never fluff padding. */
+function collectLushFacts(request: NarratorSceneRequest | undefined): string[] {
+  if (!request) return [];
+  const facts: string[] = [];
+  const place =
+    request.travelOutcome?.kind === 'arrived'
+      ? request.travelOutcome.place
+      : request.travelOutcome?.kind === 'at-boundary'
+        ? request.travelOutcome.place
+        : request.locationHint ?? null;
+  if (place?.name?.trim()) {
+    const name = place.name.trim();
+    const desc = (place.description ?? '').replace(/\s+/g, ' ').trim();
+    if (desc) facts.push(`Here at ${name}: ${desc}`);
+    else facts.push(`You remain at ${name}.`);
+    const nearby = place.nearby ?? [];
+    if (nearby.length > 0) {
+      facts.push(
+        `Exits and nearby: ${nearby
+          .slice(0, 4)
+          .map((e) => {
+            const dest = e.toName?.trim() || 'somewhere';
+            const label = e.label?.trim();
+            return label ? `${dest} (${label})` : dest;
+          })
+          .join('; ')}.`,
+      );
+    } else {
+      facts.push('No obvious exits from here.');
+    }
+    const n = name.toLowerCase();
+    if (/common|kettle|inn/.test(n)) {
+      facts.push(
+        'Patrons murmur at the benches; the bar keeps its quiet inventory of mugs.',
+      );
+    } else if (/emberford|street|town|gate/.test(n)) {
+      facts.push(
+        'Townsfolk pass with baskets and gossip; chimney smoke threads the lane.',
+      );
+    } else if (/forge|smith|brightanvil/.test(n)) {
+      facts.push(
+        'An apprentice stacks cooled shoes; sparks still tick from the last strike.',
+      );
+    } else if (/mossglass|alchemist|counter|shop/.test(n)) {
+      facts.push(
+        'Labeled vials wink on the shelf; drying herbs tick against their strings.',
+      );
+    } else if (/field|vale|ashen/.test(n)) {
+      facts.push('Scarecrows lean in the wind; pale soil lifts, then settles again.');
+    } else if (/cellar/.test(n)) {
+      facts.push('Casks sweat in the cool dark; the spice-chest lock holds fast.');
+    }
+  }
+  const fuel = request.worldTick?.hearthFuel;
+  if (fuel != null) {
+    if (fuel <= 0) facts.push('The hearth is ash and cold memory.');
+    else if (fuel === 1) {
+      facts.push('The hearth is nearly out — thin coals, more smoke than flame.');
+    } else if (fuel <= 2) {
+      facts.push('The hearth burns low, glow pulled tight to the coals.');
+    } else {
+      facts.push('The hearth still throws steady warmth into the room.');
+    }
+  }
+  return facts;
+}
+
 function applyVerbosity(
   prose: string,
   verbosity: NarratorVerbosity = 'standard',
+  request?: NarratorSceneRequest,
 ): string {
   const trimmed = prose.trim();
   if (verbosity === 'short') {
@@ -391,7 +459,24 @@ function applyVerbosity(
     return sentence.length > 160 ? `${sentence.slice(0, 157)}…` : sentence;
   }
   if (verbosity === 'lush') {
-    return `${trimmed} Soft detail gathers at the edges of the moment — texture, light, and quiet possibility — without crowding your choice.`;
+    const lower = trimmed.toLowerCase();
+    const fresh: string[] = [];
+    for (const fact of collectLushFacts(request)) {
+      // Skip facts whose distinctive core already appears in the base line.
+      const core = fact
+        .replace(/^Here at [^:]+:\s*/i, '')
+        .replace(/^You remain at\s+/i, '')
+        .replace(/^Exits and nearby:\s*/i, '')
+        .slice(0, 36)
+        .toLowerCase();
+      if (core && lower.includes(core)) continue;
+      if (/soft detail gathers|quiet possibility|texture, light/i.test(fact)) {
+        continue;
+      }
+      fresh.push(fact);
+    }
+    if (fresh.length === 0) return trimmed;
+    return `${trimmed} ${fresh.join(' ')}`;
   }
   return trimmed;
 }
@@ -435,12 +520,42 @@ function resolveStubProse(request: NarratorSceneRequest): {
     body = stubs.openingBeat;
     source = 'pack-template';
   } else if (beat === 'continue') {
-    if (stubs?.continueBeat) {
-      body = stubs.continueBeat;
-      source = 'pack-template';
-    } else {
-      body = FALLBACK_CONTINUE;
+    // NARR-02c: continue must not spam one identical line — vary with place facts.
+    const continuePool: string[] = [];
+    if (stubs?.continueBeat?.trim()) continuePool.push(stubs.continueBeat.trim());
+    continuePool.push(FALLBACK_CONTINUE);
+    const hint = request.locationHint;
+    if (hint?.name?.trim()) {
+      const name = hint.name.trim();
+      const desc = (hint.description ?? '').replace(/\s+/g, ' ').trim();
+      continuePool.push(
+        desc
+          ? `The moment holds at ${name}. ${desc}`
+          : `The moment holds at ${name}.`,
+      );
+      const nearby = hint.nearby ?? [];
+      if (nearby.length > 0) {
+        continuePool.push(
+          `At ${name}, paths still wait: ${nearby
+            .slice(0, 3)
+            .map((e) => e.toName?.trim() || 'somewhere')
+            .join('; ')}.`,
+        );
+      }
     }
+    if (request.worldTick?.hearthFuel != null) {
+      const f = request.worldTick.hearthFuel;
+      continuePool.push(
+        f <= 0
+          ? 'Ash ticks in a dead hearth. The room waits on what you do next.'
+          : 'Firelight leans on the benches. The tale waits on your next kindness — or stand.',
+      );
+    }
+    body = pickVariedLine(
+      continuePool,
+      `continue|${request.locationId ?? ''}|${request.turn ?? 0}`,
+    );
+    source = stubs?.continueBeat ? 'pack-template' : 'canned';
   } else if (beat === 'custom') {
     // Never echo raw playerAction into player-facing prose.
     // Travel arrival/refuse → Map-truth. World-tick → ambient. Location Q → Map-truth.
@@ -489,7 +604,7 @@ function resolveStubProse(request: NarratorSceneRequest): {
   }
 
   return {
-    prose: ensureProse(applyVerbosity(bits.join(' '), request.verbosity)),
+    prose: ensureProse(applyVerbosity(bits.join(' '), request.verbosity, request)),
     source,
   };
 }
@@ -638,7 +753,7 @@ export class RemoteNarratorProvider implements NarratorProvider {
     });
     const prose = completion.choices[0]!.message.content.trim();
     return {
-      prose: ensureProse(applyVerbosity(prose, request.verbosity)),
+      prose: ensureProse(applyVerbosity(prose, request.verbosity, request)),
       providerKind: 'remote',
       offline: false,
       source: 'remote',

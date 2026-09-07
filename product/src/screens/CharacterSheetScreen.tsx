@@ -1,9 +1,24 @@
 import React, { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { AbilityKey, CampaignSave, CharacterSheet } from '../../engine';
 import { ABILITY_KEYS, deriveStats } from '../../engine';
 import { theme } from '../theme';
 import { CombatStatsTab } from './CombatStatsTab';
+
+/** CHAR-01: stub mana/focus by class flavor — "—" when the class has none. */
+function resourceSlotsFor(className: string): { mana: string; focus: string } {
+  const c = className.toLowerCase();
+  const caster = /mage|wizard|sorcer|warlock|bard|singer|cleric|druid|alchem/.test(
+    c,
+  );
+  const focusUser = /monk|ranger|pathfinder|rogue|psion/.test(c);
+  return {
+    mana: caster ? '—' : '—',
+    focus: focusUser || caster ? '—' : '—',
+  };
+}
+
 
 type Props = {
   /** Active campaign; null → empty-state. */
@@ -31,6 +46,7 @@ function formatMod(n: number): string {
  * Empty-state when no campaign or empty party (empty party is valid).
  */
 export function CharacterSheetScreen({ campaign, onBack, embedded = false }: Props) {
+  const insets = useSafeAreaInsets();
   const pc: CharacterSheet | null =
     campaign && campaign.party.length > 0 ? campaign.party[0]! : null;
 
@@ -39,10 +55,13 @@ export function CharacterSheetScreen({ campaign, onBack, embedded = false }: Pro
     [pc],
   );
 
+  // UX-01b: character / derived sections clear Android nav (outer pad + scroll pad).
+  const bottomClear = Math.max(insets.bottom, 48) + 24;
+
   return (
     <ScrollView
       style={styles.scroll}
-      contentContainerStyle={styles.root}
+      contentContainerStyle={[styles.root, { paddingBottom: bottomClear }]}
       keyboardShouldPersistTaps="handled"
     >
       {!embedded && onBack ? (
@@ -83,9 +102,33 @@ export function CharacterSheetScreen({ campaign, onBack, embedded = false }: Pro
           <View style={styles.card}>
             <Text style={styles.bannerLabel}>Active PC</Text>
             <Text style={styles.name}>{pc.name}</Text>
+            {(() => {
+              const maxHp =
+                campaign.world?.combat?.maxHp ?? derived.maxHitPoints;
+              const hp =
+                campaign.world?.combat?.hp ?? maxHp;
+              const slots = resourceSlotsFor(pc.className);
+              return (
+                <View style={styles.vitalsRow}>
+                  <Text style={styles.vitalPrimary}>
+                    HP{' '}
+                    <Text style={styles.vitalValue}>
+                      {hp}/{maxHp}
+                    </Text>
+                  </Text>
+                  <Text style={styles.vitalSlot}>
+                    Mana <Text style={styles.vitalValue}>{slots.mana}</Text>
+                  </Text>
+                  <Text style={styles.vitalSlot}>
+                    Focus <Text style={styles.vitalValue}>{slots.focus}</Text>
+                  </Text>
+                </View>
+              );
+            })()}
             <Text style={styles.meta}>
-              {pc.className} · Level {pc.level} · Hit die d{pc.hitDie}
+              {pc.className} · Level {pc.level}
             </Text>
+            <Text style={styles.metaSmall}>Hit die d{pc.hitDie}</Text>
             {pc.age !== null ? (
               <Text style={styles.meta}>Age: {pc.age}</Text>
             ) : null}
@@ -167,7 +210,6 @@ const styles = StyleSheet.create({
   },
   root: {
     padding: theme.spacing.lg,
-    paddingBottom: theme.spacing.xl,
   },
   back: {
     alignSelf: 'flex-start',
@@ -227,6 +269,33 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     fontSize: 13,
     lineHeight: 18,
+  },
+  metaSmall: {
+    color: theme.colors.textMuted,
+    fontSize: 11,
+    lineHeight: 16,
+    marginBottom: 2,
+  },
+  vitalsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  vitalPrimary: {
+    color: theme.colors.textMuted,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  vitalSlot: {
+    color: theme.colors.textMuted,
+    fontSize: 14,
+  },
+  vitalValue: {
+    color: theme.colors.accent,
+    fontWeight: '700',
   },
   metaMuted: {
     color: theme.colors.textMuted,

@@ -19,6 +19,8 @@ describe('ambient world-tick (NARR-02b)', () => {
   it('detects wait and fuel actions', () => {
     assert.equal(isWaitAction('I wait by the fire'), true);
     assert.equal(isWaitAction('press the moment'), true);
+    assert.equal(isWaitAction('Take a moment'), true);
+    assert.equal(isWaitAction('I take a moment here'), true);
     assert.equal(isWaitAction('I sit by the hearth'), true);
     assert.equal(isWaitAction('I attack the goblin'), false);
     assert.equal(isFuelAction('I add wood to the fire'), true);
@@ -111,8 +113,47 @@ describe('ambient world-tick (NARR-02b)', () => {
       locationId: 'interior.kettle-cellar',
       playerAction: 'pass time',
     });
-    assert.equal(a.hint.kind, 'generic');
+    assert.equal(a.hint.kind, 'place');
     assert.equal(b.flagPatch[FLAG_LAST_WAIT_TICK], 2);
+    assert.notEqual(a.hint.prose, b.hint.prose);
+    assert.match(a.hint.prose ?? '', /cellar|casks|cider/i);
+  });
+
+  it('Copper Kettle threshold waits use inn ambience (not hearth embers)', () => {
+    let flags: Record<string, string | number | boolean> = {};
+    const lines: string[] = [];
+    for (const action of ['Take a moment', 'I wait', 'press the moment', 'linger']) {
+      const r = tickWorldAmbient({
+        flags,
+        locationId: 'place.copper-kettle',
+        playerAction: action,
+      });
+      flags = { ...flags, ...r.flagPatch };
+      lines.push(r.hint.prose ?? '');
+      assert.equal(r.hint.kind, 'place');
+      assert.equal(r.hint.isWait, true);
+      assert.equal(r.hint.hearthFuel, null);
+    }
+    assert.equal(new Set(lines).size, lines.length);
+    assert.match(lines[0]!, /Copper Kettle|inn|kettle/i);
+    assert.doesNotMatch(lines.join('\n'), /Embers settle|You act\./i);
+  });
+
+  it('Emberford street waits progress street ambience', () => {
+    let flags: Record<string, string | number | boolean> = {};
+    const a = tickWorldAmbient({
+      flags,
+      locationId: 'locale.emberford',
+      playerAction: 'Take a moment',
+    });
+    flags = { ...flags, ...a.flagPatch };
+    const b = tickWorldAmbient({
+      flags,
+      locationId: 'locale.emberford',
+      playerAction: 'I wait',
+    });
+    assert.equal(a.hint.kind, 'place');
+    assert.match(a.hint.prose ?? '', /Emberford|street|chimney|market/i);
     assert.notEqual(a.hint.prose, b.hint.prose);
   });
 
