@@ -31,7 +31,6 @@ const PANEL_ICONS: Record<string, ImageSourcePropType> = {
   character: appImages.iconCharacter,
   items: appImages.iconItems,
   dice: appImages.iconDice,
-  combat: appImages.iconCombat,
   quest: appImages.iconQuest,
   companions: appImages.iconCompanions,
   map: appImages.iconMap,

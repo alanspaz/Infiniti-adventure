@@ -6,7 +6,7 @@ OpenAI-compatible chat/completions-style interface for scene prose. Pure TypeScr
 ## Provider kinds (`ProviderKind`)
 | Kind | Behavior |
 |------|----------|
-| `stub` | Offline. Uses playstyle pack `contentStubs` (e.g. `openingBeat`) and canned fallbacks. Always works. |
+| `stub` | Offline. Uses playstyle pack `contentStubs` (e.g. `openingBeat`) and canned fallbacks. Custom beats add **action-flavor** lines (look/travel/talk/…) without echoing raw `playerAction`. Always non-empty prose. |
 | `remote` | OpenAI-compatible HTTP (`{baseUrl}/chat/completions`). Needs base URL + API key in settings. When configured, play factory sets `enableHttp` and uses real `fetch` (or injected `fetchImpl` in tests). Scene play falls back to stub if remote is missing or fails. |
 | `on-device` | Reserved for a future local model. Throws clear **reserved / not available** in v1; play factory uses stub with a reserved note. |
 

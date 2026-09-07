@@ -49,3 +49,7 @@ Throws if `locationId` is missing from the graph.
 
 ## Non-goals (this contract)
 Full overworld UI, fog of war, procedural generation, remote map sync, NSFW locales, Expo device playtest.
+
+
+## App Map panel (MAP-01)
+UI shows current + nearby only; travel via Tale text.

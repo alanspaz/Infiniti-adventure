@@ -95,6 +95,30 @@ describe('narrator provider', () => {
   });
 
 
+  it('stub custom beat flavors look/travel without echoing playerAction', async () => {
+    resetPlaystylePackRegistry();
+    const provider = createNarratorProvider('stub');
+    const look = await provider.narrateScene({
+      playstylePackId: 'hearthlight',
+      beat: 'custom',
+      playerAction: 'I look around the common room carefully',
+      partyNames: [],
+      verbosity: 'standard',
+    });
+    assert.match(look.prose, /take in the scene|Details sharpen/i);
+    assert.doesNotMatch(look.prose, /look around the common room carefully/i);
+    assert.ok(look.prose.length > 20);
+
+    const go = await provider.narrateScene({
+      playstylePackId: 'hearthlight',
+      beat: 'custom',
+      playerAction: 'I go down to the cellar',
+      partyNames: [],
+    });
+    assert.match(go.prose, /footing|Thresholds|roads|rooms/i);
+    assert.doesNotMatch(go.prose, /go down to the cellar/i);
+  });
+
   it('stub player prose omits raw turn markers and location ids', async () => {
     const provider = createNarratorProvider('stub');
     const result = await provider.narrateScene({

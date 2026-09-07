@@ -8,7 +8,6 @@ export type PlayPanelId =
   | 'character'
   | 'items'
   | 'dice'
-  | 'combat'
   | 'quest'
   | 'companions'
   | 'map'
@@ -17,11 +16,11 @@ export type PlayPanelId =
 
 export type PlaySurfaceId = 'story' | PlayPanelId;
 
+/** Icon grid panels — Character includes combat readiness (UI-02); no separate Combat tab. */
 export const PLAY_ICONS: { id: Exclude<PlayPanelId, 'stills'>; label: string }[] = [
   { id: 'character', label: 'Character' },
   { id: 'items', label: 'Items' },
   { id: 'dice', label: 'Dice' },
-  { id: 'combat', label: 'Combat' },
   { id: 'quest', label: 'Quest' },
   { id: 'companions', label: 'Party' },
   { id: 'map', label: 'Map' },
@@ -35,7 +34,7 @@ type Props = {
 };
 
 /**
- * Base44 layout / IA theme: 2×4 header icon grid + Tale control.
+ * Base44 layout / IA theme: header icon grid + Tale control (Character merges combat).
  * Icons from Artist square 64px set (`assets/icons/*.png`).
  */
 export function PlayIconGrid({ active, onChange, onStory }: Props) {

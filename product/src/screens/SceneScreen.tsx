@@ -21,6 +21,7 @@ import {
   type StillResult,
 } from '../../engine';
 import { createPlayNarrator } from '../ai';
+import { STUB_SAFE_PROSE } from '../../engine/narrator';
 import { StillFrame } from '../components/StillFrame';
 import { appImages } from '../images';
 import { createAppStillProvider } from '../persist/stillCache';
@@ -65,7 +66,7 @@ function naturalPlaceLine(
 }
 
 function playerFacingProse(raw: string): string {
-  return raw
+  const cleaned = raw
     .replace(/\s*Recently:\s*[^\n]*/gi, '')
     .replace(/\s*Place mark:\s*[^\n.]+\.?/gi, '')
     .replace(/\s*Turn\s+\d+\.?/gi, '')
@@ -76,6 +77,8 @@ function playerFacingProse(raw: string): string {
     .replace(/\s*You intended:\s*[^\n.]+\.?/gi, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
+  // NARR-01: never emit an empty narrator bubble after cleanup.
+  return cleaned.length > 0 ? cleaned : STUB_SAFE_PROSE;
 }
 
 function recordsToBeats(records: StoryBeatRecord[]): StoryBeat[] {
@@ -171,7 +174,13 @@ export function SceneScreen({
         placeLine,
         playerLine,
       };
-      const next = [...beatsRef.current, entry].slice(-MAX_STORY_BEATS);
+      // Replace optimistic pending narrator bubble if present (NARR-01).
+      const base =
+        beatsRef.current.length > 0 &&
+        beatsRef.current[beatsRef.current.length - 1]!.id.startsWith('pending-')
+          ? beatsRef.current.slice(0, -1)
+          : beatsRef.current;
+      const next = [...base, entry].slice(-MAX_STORY_BEATS);
       beatsRef.current = next;
       lastLocRef.current = beat.campaign.session.locationId ?? null;
       setBeats(next);
@@ -215,46 +224,64 @@ export function SceneScreen({
     }) => {
       setBusy(true);
       setError(null);
+      const seed =
+        campaign.session.rngSeed ??
+        (Math.floor(Date.now() / 1000) % 1_000_000);
+      const beatInput = {
+        campaign,
+        playerAction: opts.playerAction,
+        beat: opts.beat,
+        verbosity,
+        map,
+        stills: stillProvider,
+        showMe: opts.showMe,
+        forceCheck: opts.forceCheck,
+        skipTravel: opts.skipTravel,
+        rng: createSeededRng(seed + campaign.session.turn),
+      };
+
+      const pushEmergencyNarrator = () => {
+        // Last-resort local bubble so Tale submit is never silent.
+        const playerLine = pendingPlayerLine.current ?? opts.playerAction ?? null;
+        pendingPlayerLine.current = null;
+        const entry: StoryBeat = {
+          id: `local-${Date.now()}`,
+          prose: STUB_SAFE_PROSE,
+          checkLine: null,
+          still: null,
+          placeLine: null,
+          playerLine,
+        };
+        const base =
+          beatsRef.current.length > 0 &&
+          beatsRef.current[beatsRef.current.length - 1]!.id.startsWith(
+            'pending-',
+          )
+            ? beatsRef.current.slice(0, -1)
+            : beatsRef.current;
+        const next = [...base, entry].slice(-MAX_STORY_BEATS);
+        beatsRef.current = next;
+        setBeats(next);
+        setEarlierOpen(false);
+      };
+
       try {
         const { provider } = playNarrator();
-        let narrator = provider;
-
-        const seed =
-          campaign.session.rngSeed ??
-          (Math.floor(Date.now() / 1000) % 1_000_000);
-
         let result: SceneBeatResult;
         try {
           result = await resolveSceneBeat({
-            campaign,
-            playerAction: opts.playerAction,
-            beat: opts.beat,
-            verbosity,
-            narrator,
-            map,
-            stills: stillProvider,
-            showMe: opts.showMe,
-            forceCheck: opts.forceCheck,
-            skipTravel: opts.skipTravel,
-            rng: createSeededRng(seed + campaign.session.turn),
+            ...beatInput,
+            narrator: provider,
           });
         } catch (err) {
+          // Remote/on-device failure → improved stub (never block Tale).
           if (provider.kind !== 'stub') {
-            narrator = createPlayNarrator({
+            const stub = createPlayNarrator({
               providerKind: 'stub',
             }).provider;
             result = await resolveSceneBeat({
-              campaign,
-              playerAction: opts.playerAction,
-              beat: opts.beat,
-              verbosity,
-              narrator,
-              map,
-              stills: stillProvider,
-              showMe: opts.showMe,
-              forceCheck: opts.forceCheck,
-              skipTravel: opts.skipTravel,
-              rng: createSeededRng(seed + campaign.session.turn),
+              ...beatInput,
+              narrator: stub,
             });
           } else {
             throw err;
@@ -265,7 +292,24 @@ export function SceneScreen({
         if (opts.playerAction) setAction('');
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
-        pendingPlayerLine.current = null;
+        if (opts.playerAction || pendingPlayerLine.current) {
+          try {
+            const stub = createPlayNarrator({
+              providerKind: 'stub',
+            }).provider;
+            const result = await resolveSceneBeat({
+              ...beatInput,
+              narrator: stub,
+            });
+            applyBeat(result);
+            if (opts.playerAction) setAction('');
+          } catch {
+            pushEmergencyNarrator();
+            if (opts.playerAction) setAction('');
+          }
+        } else {
+          pendingPlayerLine.current = null;
+        }
       } finally {
         setBusy(false);
       }
@@ -349,6 +393,20 @@ export function SceneScreen({
     const text = action.trim();
     if (!text || busy) return;
     pendingPlayerLine.current = text;
+    setAction('');
+    // Optimistic player + narrator bubble so submit is never visually silent.
+    const pending: StoryBeat = {
+      id: `pending-${Date.now()}`,
+      prose: 'The tale gathers around your choice…',
+      checkLine: null,
+      still: null,
+      placeLine: null,
+      playerLine: text,
+    };
+    const next = [...beatsRef.current, pending].slice(-MAX_STORY_BEATS);
+    beatsRef.current = next;
+    setBeats(next);
+    setEarlierOpen(false);
     void runBeat({ playerAction: text, beat: 'custom' });
   };
 

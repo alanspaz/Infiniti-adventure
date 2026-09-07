@@ -367,7 +367,24 @@ async function main() {
   assert.match(playShellSrc, /SettingsScreen/);
   assert.match(playShellSrc, /DiceScreen/);
   assert.match(playShellSrc, /StillsScreen/);
-  assert.match(playShellSrc, /CombatStatsTab/);
+  assert.doesNotMatch(playShellSrc, /case 'combat'/);
+
+  const iconGridPath = path.resolve(__dirname, '../src/components/PlayIconGrid.tsx');
+  assert.ok(fs.existsSync(iconGridPath), 'PlayIconGrid.tsx missing');
+  const iconGridSrc = fs.readFileSync(iconGridPath, 'utf8');
+  assert.doesNotMatch(iconGridSrc, /id: 'combat'/);
+  assert.match(iconGridSrc, /id: 'character'/);
+  const characterSrc = fs.readFileSync(
+    path.join(screensDir, 'CharacterSheetScreen.tsx'),
+    'utf8',
+  );
+  assert.match(characterSrc, /CombatStatsTab/);
+  const mapSrc = fs.readFileSync(path.join(screensDir, 'MapScreen.tsx'), 'utf8');
+  assert.match(mapSrc, /Nearby/);
+  assert.match(mapSrc, /write it in the Tale|Tale/);
+  assert.doesNotMatch(mapSrc, /\btravel\(/);
+  assert.doesNotMatch(mapSrc, /setCampaignLocation/);
+  assert.match(sceneSrc, /STUB_SAFE_PROSE|pending-/);
 
   const assetsDir = path.resolve(__dirname, '../assets');
   assert.ok(fs.existsSync(path.join(assetsDir, 'icon.png')), 'icon.png missing');
@@ -381,15 +398,13 @@ async function main() {
   assert.equal(appJson.expo.splash.image, './assets/splash.png');
   assert.equal(appJson.expo.splash.backgroundColor, '#140f0c');
 
-  const iconGridPath = path.resolve(__dirname, '../src/components/PlayIconGrid.tsx');
-  assert.ok(fs.existsSync(iconGridPath), 'PlayIconGrid.tsx missing');
-
   const stillsSrc = fs.readFileSync(
     path.join(screensDir, 'StillsScreen.tsx'),
     'utf8',
   );
   assert.match(stillsSrc, /StillFrame/);
   assert.match(stillsSrc, /loadStillGallery|createAppStillProvider/);
+  assert.match(stillsSrc, /Offline|placeholder/i);
 
   const stillFramePath = path.resolve(__dirname, '../src/components/StillFrame.tsx');
   assert.ok(fs.existsSync(stillFramePath), 'StillFrame.tsx missing');

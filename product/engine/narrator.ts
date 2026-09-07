@@ -97,6 +97,88 @@ const FALLBACK_CONTINUE =
 const FALLBACK_CUSTOM =
   'What you chose settles into the world — doors, faces, and risks rearrange around it.';
 
+/** Guaranteed non-empty player-facing line (Tale must never stay silent). */
+export const STUB_SAFE_PROSE =
+  'The moment holds. The tale waits on what you do next.';
+
+type StubActionFlavor =
+  | 'look'
+  | 'travel'
+  | 'talk'
+  | 'fight'
+  | 'search'
+  | 'rest'
+  | 'take'
+  | 'general';
+
+const ACTION_FLAVOR_RE: Array<{ flavor: StubActionFlavor; re: RegExp }> = [
+  { flavor: 'look', re: /\b(look|gaze|watch|observe|survey|peer|glance)\b/i },
+  {
+    flavor: 'travel',
+    re: /\b(go|head|walk|travel|enter|leave|return|move|step|descend|ascend|follow|approach)\b/i,
+  },
+  {
+    flavor: 'talk',
+    re: /\b(say|ask|tell|talk|speak|persuade|convince|threaten|whisper|call)\b/i,
+  },
+  {
+    flavor: 'fight',
+    re: /\b(attack|strike|hit|fight|swing|defend|dodge|cast|shoot|slash)\b/i,
+  },
+  {
+    flavor: 'search',
+    re: /\b(search|examine|inspect|investigate|rummage|check|listen|track)\b/i,
+  },
+  { flavor: 'rest', re: /\b(rest|wait|sit|camp|sleep|catch\s*breath)\b/i },
+  {
+    flavor: 'take',
+    re: /\b(take|grab|pick\s*up|loot|pocket|steal|drink|eat|use)\b/i,
+  },
+];
+
+const FLAVOR_LINES: Record<StubActionFlavor, string> = {
+  look: 'You take in the scene. Details sharpen — light, sound, and what might matter next.',
+  travel:
+    'You set yourself toward a new footing. Thresholds, roads, and rooms answer by shifting under your feet.',
+  talk: 'Words land. Faces and silences rearrange; someone — or something — has heard you.',
+  fight:
+    'Steel and will meet the moment. The clash resolves into new openings and fresh risk.',
+  search:
+    'You dig for what is hidden. A clue, a trap, or empty air — the world gives something back.',
+  rest: 'You ease the pace. Breath returns; the next threat or kindness has a little more room.',
+  take: 'Your hands claim a change. Weight, warmth, or absence marks what you took into the tale.',
+  general:
+    'Your choice ripples outward. Doors, faces, and unfinished business lean toward what comes next.',
+};
+
+function detectActionFlavor(action: string | undefined): StubActionFlavor {
+  const text = (action ?? '').trim();
+  if (!text) return 'general';
+  for (const row of ACTION_FLAVOR_RE) {
+    if (row.re.test(text)) return row.flavor;
+  }
+  return 'general';
+}
+
+/** Action-aware stub body — never echoes raw playerAction into prose. */
+function flavorBodyForAction(
+  action: string | undefined,
+  packFallback: string | null,
+): string {
+  const flavor = detectActionFlavor(action);
+  const flavored = FLAVOR_LINES[flavor];
+  if (packFallback?.trim()) {
+    // Lead with action flavor, then pack color — still no raw echo.
+    return `${flavored} ${packFallback.trim()}`;
+  }
+  return flavored;
+}
+
+function ensureProse(prose: string): string {
+  const t = prose.replace(/\s+/g, ' ').trim();
+  return t.length > 0 ? t : STUB_SAFE_PROSE;
+}
+
 function completionFromProse(
   prose: string,
   model: string,
@@ -187,14 +269,18 @@ function resolveStubProse(request: NarratorSceneRequest): {
     }
   } else if (beat === 'custom') {
     // Never echo raw playerAction into player-facing prose.
-    if (stubs?.customBeatFallback) {
-      const prefix = stubs.customBeatPrefix?.trim();
+    // Prefer action-flavor lines so every Tale submit feels answered.
+    const packFallback = stubs?.customBeatFallback?.trim() || null;
+    const flavored = flavorBodyForAction(request.playerAction, null);
+    if (packFallback) {
+      const prefix = stubs?.customBeatPrefix?.trim();
       body = prefix
-        ? `${prefix} ${stubs.customBeatFallback}`
-        : stubs.customBeatFallback;
+        ? `${prefix} ${flavored} ${packFallback}`
+        : `${flavored} ${packFallback}`;
       source = 'pack-template';
     } else {
-      body = FALLBACK_CUSTOM;
+      body = flavored || FALLBACK_CUSTOM;
+      source = 'canned';
     }
   } else if (beat === 'opening') {
     body = CANNED_OPENING;
@@ -212,7 +298,7 @@ function resolveStubProse(request: NarratorSceneRequest): {
   }
 
   return {
-    prose: applyVerbosity(bits.join(' '), request.verbosity),
+    prose: ensureProse(applyVerbosity(bits.join(' '), request.verbosity)),
     source,
   };
 }
@@ -361,7 +447,7 @@ export class RemoteNarratorProvider implements NarratorProvider {
     });
     const prose = completion.choices[0]!.message.content.trim();
     return {
-      prose: applyVerbosity(prose, request.verbosity),
+      prose: ensureProse(applyVerbosity(prose, request.verbosity)),
       providerKind: 'remote',
       offline: false,
       source: 'remote',

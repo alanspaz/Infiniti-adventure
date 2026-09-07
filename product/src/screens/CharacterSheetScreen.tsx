@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { AbilityKey, CampaignSave, CharacterSheet } from '../../engine';
 import { ABILITY_KEYS, deriveStats } from '../../engine';
 import { theme } from '../theme';
+import { CombatStatsTab } from './CombatStatsTab';
 
 type Props = {
   /** Active campaign; null → empty-state. */
@@ -139,8 +140,13 @@ export function CharacterSheetScreen({ campaign, onBack, embedded = false }: Pro
               value={String(derived.passivePerception)}
             />
           </View>
+
+          {embedded ? <CombatStatsTab asSection /> : null}
         </>
       ) : null}
+
+      {/* Empty party / no campaign: still show combat slice when embedded. */}
+      {embedded && (!campaign || !pc) ? <CombatStatsTab asSection /> : null}
     </ScrollView>
   );
 }

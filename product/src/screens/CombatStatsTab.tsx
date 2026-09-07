@@ -8,27 +8,30 @@ function formatMod(n: number): string {
   return n >= 0 ? `+${n}` : `${n}`;
 }
 
+type Props = {
+  /** When true, render as a section (no ScrollView) for merged Character tab. */
+  asSection?: boolean;
+};
+
 /**
  * Combat / stats panel — views of CampaignState.combat + character.
- * HP matches CombatRail (same slice).
+ * HP matches CombatRail (same slice). Merged into Character tab (UI-02).
  */
-export function CombatStatsTab() {
+export function CombatStatsTab({ asSection = false }: Props) {
   const { state } = useCampaignState();
   const pc = state.character;
   const derived = useMemo(() => (pc ? deriveStats(pc) : null), [pc]);
   const hp = state.combat.hp;
   const maxHp = state.combat.maxHp ?? derived?.maxHitPoints ?? null;
 
-  return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.root}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text style={styles.hint}>
-        Readiness at a glance. Actions on the combat rail write this same slice.
+  const readiness = (
+    <>
+      <Text style={asSection ? styles.sectionTitle : styles.hintTop}>
+        {asSection ? 'Combat readiness' : 'Combat'}
       </Text>
-
+      <Text style={styles.hint}>
+        Same slice as the combat rail. Attack / defend / dodge write here.
+      </Text>
       {!pc || !derived ? (
         <View style={styles.card}>
           <Text style={styles.emptyTitle}>No champion yet</Text>
@@ -38,15 +41,19 @@ export function CombatStatsTab() {
         </View>
       ) : (
         <>
-          <View style={styles.card}>
-            <Text style={styles.name}>{pc.name}</Text>
-            <Text style={styles.meta}>
-              {pc.className} · Level {pc.level}
-            </Text>
-            {state.combat.lastAction ? (
-              <Text style={styles.last}>Stance: {state.combat.lastAction}</Text>
-            ) : null}
-          </View>
+          {!asSection ? (
+            <View style={styles.card}>
+              <Text style={styles.name}>{pc.name}</Text>
+              <Text style={styles.meta}>
+                {pc.className} · Level {pc.level}
+              </Text>
+              {state.combat.lastAction ? (
+                <Text style={styles.last}>Stance: {state.combat.lastAction}</Text>
+              ) : null}
+            </View>
+          ) : state.combat.lastAction ? (
+            <Text style={styles.last}>Stance: {state.combat.lastAction}</Text>
+          ) : null}
           <View style={styles.statRow}>
             <Stat
               label="HP"
@@ -58,6 +65,18 @@ export function CombatStatsTab() {
             <Stat label="Init" value={formatMod(derived.initiativeBonus)} />
             <Stat label="Prof" value={formatMod(derived.proficiencyBonus)} />
           </View>
+        </>
+      )}
+    </>
+  );
+
+  const body = asSection ? (
+    readiness
+  ) : (
+    <>
+      {readiness}
+      {pc && derived ? (
+        <>
           <Text style={styles.section}>Abilities</Text>
           <View style={styles.card}>
             {ABILITY_KEYS.map((key) => (
@@ -73,7 +92,21 @@ export function CombatStatsTab() {
             ))}
           </View>
         </>
-      )}
+      ) : null}
+    </>
+  );
+
+  if (asSection) {
+    return <View style={styles.sectionWrap}>{body}</View>;
+  }
+
+  return (
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.root}
+      keyboardShouldPersistTaps="handled"
+    >
+      {body}
     </ScrollView>
   );
 }
@@ -92,6 +125,22 @@ const styles = StyleSheet.create({
   root: {
     padding: theme.spacing.lg,
     paddingBottom: theme.spacing.xl,
+  },
+  sectionWrap: {
+    marginTop: theme.spacing.md,
+    paddingBottom: theme.spacing.sm,
+  },
+  sectionTitle: {
+    color: theme.colors.accent,
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: theme.spacing.xs,
+  },
+  hintTop: {
+    color: theme.colors.accent,
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: theme.spacing.xs,
   },
   hint: {
     color: theme.colors.textMuted,

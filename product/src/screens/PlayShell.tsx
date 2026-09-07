@@ -22,7 +22,6 @@ import { CompanionsTab } from './CompanionsTab';
 import { ItemsTab } from './ItemsTab';
 import { MapScreen } from './MapScreen';
 import { DiceScreen } from './DiceScreen';
-import { CombatStatsTab } from './CombatStatsTab';
 import { StillsScreen } from './StillsScreen';
 import { SettingsScreen } from './SettingsScreen';
 
@@ -36,6 +35,7 @@ const SIDE_PANEL_BREAKPOINT = 768;
 
 /**
  * Base44-inspired hybrid: Story + icon header + combat rail.
+ * Character tab merges combat readiness (UI-02); no separate Combat panel.
  * Desktop-ish: story main + side panel; mobile: full-screen panel overlay.
  * All panels read CampaignState only (CS-01).
  */
@@ -149,8 +149,6 @@ function panelTitle(surface: PlaySurfaceId): string {
       return 'Items';
     case 'dice':
       return 'Dice';
-    case 'combat':
-      return 'Combat';
     case 'quest':
       return 'Quests';
     case 'companions':
@@ -175,6 +173,7 @@ function renderPanel(
     case 'quest':
       return <QuestTab />;
     case 'character':
+      // UI-02: Character sheet includes combat readiness; CombatRail stays separate.
       return <CharacterSheetScreen campaign={campaign} embedded />;
     case 'companions':
       return <CompanionsTab />;
@@ -190,8 +189,6 @@ function renderPanel(
       );
     case 'dice':
       return <DiceScreen campaign={campaign} embedded />;
-    case 'combat':
-      return <CombatStatsTab />;
     case 'stills':
       return <StillsScreen campaign={campaign} embedded />;
     case 'settings':

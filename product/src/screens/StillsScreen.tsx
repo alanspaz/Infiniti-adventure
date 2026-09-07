@@ -99,11 +99,11 @@ export function StillsScreen({ campaign, onBack, embedded = false }: Props) {
         </Pressable>
       ) : null}
 
-      <Text style={styles.title}>Stills</Text>
+      <Text style={styles.title}>{embedded ? 'Visions' : 'Stills'}</Text>
       <Text style={styles.hint}>
         {embedded
-          ? 'Ask to see what was described. Visions linger in your gallery.'
-          : 'Ask to see what was described. Offline placeholders linger between sessions.'}
+          ? 'Ask to see what was described. Offline stubs show placeholder visions — no network required. Cached stills stay on this device.'
+          : 'Ask to see what was described. Offline mode uses placeholder visions (not live image gen). They linger in device cache between sessions.'}
       </Text>
 
       {note ? <Text style={styles.note}>{note}</Text> : null}
@@ -135,7 +135,8 @@ export function StillsScreen({ campaign, onBack, embedded = false }: Props) {
       </Text>
       {entries.length === 0 ? (
         <Text style={styles.meta}>
-          No cached stills yet. Request one above or use Scene → Show me.
+          No visions cached yet. Request one above, or use Tale → Show me for an
+          offline placeholder.
         </Text>
       ) : (
         entries.map((entry) => (
