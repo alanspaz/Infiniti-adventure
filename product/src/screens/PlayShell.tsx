@@ -37,7 +37,7 @@ type Props = {
 const SIDE_PANEL_BREAKPOINT = 768;
 
 /**
- * Base44-inspired hybrid: Story + icon header + combat rail.
+ * Immersive Tale chrome (UI-04): chat-first story; icon grid behind more menu.
  * Character tab merges combat readiness (UI-02); no separate Combat panel.
  * Desktop-ish: story main + side panel; mobile: full-screen panel overlay.
  * All panels read CampaignState only (CS-01).
@@ -56,12 +56,19 @@ export function PlayShell({ campaign, onCampaignChange, onLeave }: Props) {
 function PlayShellInner({ onLeave }: { onLeave: () => void }) {
   const { state, campaign, replaceCampaign } = useCampaignState();
   const [surface, setSurface] = useState<PlaySurfaceId>('story');
+  const [menuOpen, setMenuOpen] = useState(false);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const sideBySide = width >= SIDE_PANEL_BREAKPOINT && surface !== 'story';
 
-  const openPanel = (id: PlayPanelId) => setSurface(id);
-  const openStory = () => setSurface('story');
+  const openPanel = (id: PlayPanelId) => {
+    setSurface(id);
+    setMenuOpen(false);
+  };
+  const openStory = () => {
+    setSurface('story');
+    setMenuOpen(false);
+  };
   const panelOpen = surface !== 'story';
 
   const panel = renderPanel(surface, campaign, replaceCampaign, state.title);
@@ -79,24 +86,42 @@ function PlayShellInner({ onLeave }: { onLeave: () => void }) {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
     >
       <View style={[styles.root, { paddingTop: Math.max(insets.top, 0) }]}>
-      {/* UI-03: chat-first Tale — adventure name + PC/level live on Settings / Character */}
-      <View style={styles.header}>
-        <Text style={styles.kicker}>Tale</Text>
+      {/* UI-04: immersive Tale — no TALE/back chrome; tabs behind more menu */}
+      <View style={styles.chromeBar}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Back to home"
-          onPress={onLeave}
-          style={({ pressed }) => [styles.leave, pressed && styles.pressed]}
+          accessibilityLabel={menuOpen ? 'Close menu' : 'More menu'}
+          accessibilityState={{ expanded: menuOpen }}
+          onPress={() => setMenuOpen((o) => !o)}
+          style={({ pressed }) => [
+            styles.moreBtn,
+            menuOpen && styles.moreBtnOpen,
+            pressed && styles.pressed,
+          ]}
         >
-          <Text style={styles.leaveLabel}>‹</Text>
+          <Text style={[styles.moreGlyph, menuOpen && styles.moreGlyphOpen]}>
+            ☰
+          </Text>
         </Pressable>
+        {menuOpen ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back to home"
+            onPress={onLeave}
+            style={({ pressed }) => [styles.homeBtn, pressed && styles.pressed]}
+          >
+            <Text style={styles.homeLabel}>Home</Text>
+          </Pressable>
+        ) : null}
       </View>
 
-      <PlayIconGrid
-        active={surface}
-        onChange={openPanel}
-        onStory={openStory}
-      />
+      {menuOpen ? (
+        <PlayIconGrid
+          active={surface}
+          onChange={openPanel}
+          onStory={openStory}
+        />
+      ) : null}
 
       <View style={[styles.body, sideBySide && styles.bodyRow]}>
         <View
@@ -111,7 +136,7 @@ function PlayShellInner({ onLeave }: { onLeave: () => void }) {
             onCampaignChange={replaceCampaign}
             embedded
             bottomInset={0}
-            onOpenStills={() => setSurface('stills')}
+            onOpenStills={() => { setSurface('stills'); setMenuOpen(false); }}
           />
         </View>
 
@@ -211,30 +236,47 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
-  header: {
+  chromeBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
+    gap: theme.spacing.sm,
     paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.sm,
+    paddingTop: theme.spacing.xs,
     paddingBottom: theme.spacing.xs,
     backgroundColor: theme.colors.background,
   },
-  kicker: {
-    color: theme.colors.accent,
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+  moreBtn: {
+    width: 40,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.surface,
   },
-  leave: {
+  moreBtnOpen: {
+    borderColor: theme.colors.accent,
+    backgroundColor: '#241c16',
+  },
+  moreGlyph: {
+    color: theme.colors.textMuted,
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 22,
+  },
+  moreGlyphOpen: {
+    color: theme.colors.accent,
+  },
+  homeBtn: {
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: 8,
     paddingVertical: 6,
     paddingHorizontal: 12,
   },
-  leaveLabel: {
+  homeLabel: {
     color: theme.colors.accent,
     fontSize: 13,
     fontWeight: '600',

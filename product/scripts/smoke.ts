@@ -368,12 +368,21 @@ async function main() {
   assert.match(playShellSrc, /DiceScreen/);
   assert.match(playShellSrc, /StillsScreen/);
   assert.doesNotMatch(playShellSrc, /case 'combat'/);
+  // UI-04: immersive chrome — more menu, no TALE/back header
+  assert.match(playShellSrc, /menuOpen|More menu|☰/);
+  assert.doesNotMatch(playShellSrc, /styles\.kicker|>Tale</);
+  assert.doesNotMatch(playShellSrc, /accessibilityLabel="Back to home"[\s\S]*?styles\.leave/);
 
   const iconGridPath = path.resolve(__dirname, '../src/components/PlayIconGrid.tsx');
   assert.ok(fs.existsSync(iconGridPath), 'PlayIconGrid.tsx missing');
   const iconGridSrc = fs.readFileSync(iconGridPath, 'utf8');
   assert.doesNotMatch(iconGridSrc, /id: 'combat'/);
   assert.match(iconGridSrc, /id: 'character'/);
+  assert.match(iconGridSrc, /id: 'settings'/);
+
+  // UI-04: 4–5 recent story beats visible before Earlier collapse
+  assert.match(sceneSrc, /RECENT_VISIBLE\s*=\s*[45]/);
+  assert.match(sceneSrc, /Earlier/);
   const characterSrc = fs.readFileSync(
     path.join(screensDir, 'CharacterSheetScreen.tsx'),
     'utf8',

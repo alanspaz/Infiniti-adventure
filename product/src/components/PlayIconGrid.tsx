@@ -34,8 +34,8 @@ type Props = {
 };
 
 /**
- * Base44 layout / IA theme: header icon grid + Tale control (Character merges combat).
- * Icons from Artist square 64px set (`assets/icons/*.png`).
+ * Panel picker revealed from PlayShell more menu (UI-04). Tale + icon grid.
+ * Character merges combat readiness (UI-02). Icons: Artist square 64px set.
  */
 export function PlayIconGrid({ active, onChange, onStory }: Props) {
   return (

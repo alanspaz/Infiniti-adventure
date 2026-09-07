@@ -440,9 +440,15 @@ export function SceneScreen({
     });
   };
 
-  const prior = beats.length > 1 ? beats.slice(0, -1) : [];
-  const latest = beats.length > 0 ? beats[beats.length - 1]! : null;
-  const headerPlace = latest?.placeLine ?? null;
+  // UI-04: keep 4–5 most recent beats as full bubbles; older collapse into Earlier.
+  const RECENT_VISIBLE = 5;
+  const older =
+    beats.length > RECENT_VISIBLE ? beats.slice(0, -RECENT_VISIBLE) : [];
+  const recent = beats.slice(-RECENT_VISIBLE);
+  const headerPlace =
+    recent.length > 0
+      ? ([...recent].reverse().find((b) => b.placeLine)?.placeLine ?? null)
+      : null;
 
   const renderNarratorBubble = (b: StoryBeat, key: string) => (
     <View key={key} style={styles.dmRow}>
@@ -488,12 +494,16 @@ export function SceneScreen({
           </Pressable>
         ) : null}
 
-        <View style={styles.storyHeader}>
-          <Text style={styles.storyTitle}>Story</Text>
-          {headerPlace ? (
-            <Text style={styles.placeLine}>{headerPlace}</Text>
-          ) : null}
-        </View>
+        {headerPlace || !embedded ? (
+          <View style={styles.storyHeader}>
+            {!embedded ? (
+              <Text style={styles.storyTitle}>Story</Text>
+            ) : null}
+            {headerPlace ? (
+              <Text style={styles.placeLine}>{headerPlace}</Text>
+            ) : null}
+          </View>
+        ) : null}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -505,7 +515,7 @@ export function SceneScreen({
           </View>
         ) : (
           <>
-            {prior.length > 0 ? (
+            {older.length > 0 ? (
               <View style={styles.earlierWrap}>
                 <Pressable
                   accessibilityRole="button"
@@ -517,11 +527,11 @@ export function SceneScreen({
                   ]}
                 >
                   <Text style={styles.earlierLabel}>
-                    {earlierOpen ? 'Hide earlier' : 'Earlier'} ({prior.length})
+                    {earlierOpen ? 'Hide earlier' : 'Earlier'} ({older.length})
                   </Text>
                 </Pressable>
                 {earlierOpen
-                  ? prior.map((b) => (
+                  ? older.map((b) => (
                       <View key={b.id}>
                         {b.playerLine ? (
                           <View style={styles.playerRowCompact}>
@@ -541,18 +551,18 @@ export function SceneScreen({
               </View>
             ) : null}
 
-            {latest ? (
-              <>
-                {latest.playerLine ? (
+            {recent.map((b) => (
+              <React.Fragment key={b.id}>
+                {b.playerLine ? (
                   <View style={styles.playerRow}>
                     <View style={styles.playerBubble}>
-                      <Text style={styles.playerProse}>{latest.playerLine}</Text>
+                      <Text style={styles.playerProse}>{b.playerLine}</Text>
                     </View>
                   </View>
                 ) : null}
-                {renderNarratorBubble(latest, latest.id)}
-              </>
-            ) : null}
+                {renderNarratorBubble(b, b.id)}
+              </React.Fragment>
+            ))}
           </>
         )}
 
