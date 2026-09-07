@@ -10,6 +10,7 @@ import {
 } from './index';
 import {
   detectSuggestedCheck,
+  detectTravelIntent,
   detectTravelSuggestion,
   resolveOpeningBeat,
   resolveSceneBeat,
@@ -47,6 +48,31 @@ describe('scene adventure loop', () => {
     );
     assert.ok(byName);
     assert.equal(byName!.toNodeId, 'place.copper-kettle');
+
+    const byGo = detectTravelSuggestion('go to the cellar', map, from);
+    assert.ok(byGo);
+    assert.equal(byGo!.toNodeId, 'interior.kettle-cellar');
+
+    const kettle = detectTravelSuggestion('walk to Copper Kettle', map, from);
+    assert.ok(kettle);
+    assert.equal(kettle!.toNodeId, 'place.copper-kettle');
+
+    const unknown = detectTravelIntent('go to the moon', map, from);
+    assert.equal(unknown.kind, 'unknown');
+
+    const upstairs = detectTravelIntent('go upstairs', map, from);
+    assert.equal(upstairs.kind, 'travel');
+    if (upstairs.kind === 'travel') {
+      assert.equal(upstairs.suggestion.toNodeId, 'place.copper-kettle');
+      assert.equal(upstairs.suggestion.via, 'parent-leave');
+    }
+
+    const leave = detectTravelIntent('I leave', map, from);
+    assert.equal(leave.kind, 'travel');
+    if (leave.kind === 'travel') {
+      assert.equal(leave.suggestion.toNodeId, 'place.copper-kettle');
+      assert.equal(leave.suggestion.via, 'parent-leave');
+    }
   });
 
   it('resolveOpeningBeat works offline with stub and empty party', async () => {
@@ -120,7 +146,102 @@ describe('scene adventure loop', () => {
     assert.equal(beat.campaign.session.locationId, 'interior.kettle-cellar');
     assert.ok(beat.where);
     assert.match(beat.where!.path, /Cellar|Copper|Ember/i);
-    assert.doesNotMatch(beat.prose, /You make your way/i);
+    assert.match(beat.prose, /arrive at|Inn Cellar/i);
+  });
+
+  it('TRAVEL-01: go nearby moves; where-am-I matches; unknown refuses', async () => {
+    let camp = createCampaign({
+      id: 'scene-travel-01',
+      session: { locationId: 'interior.kettle-common', turn: 2 },
+    });
+    const go = await resolveSceneBeat({
+      campaign: camp,
+      playerAction: 'go to the cellar',
+      forceCheck: null,
+      rng: createSeededRng(4),
+    });
+    assert.ok(go.travel);
+    assert.equal(go.campaign.session.locationId, 'interior.kettle-cellar');
+    assert.match(go.prose, /arrive|Inn Cellar/i);
+
+    camp = go.campaign;
+    const where = await resolveSceneBeat({
+      campaign: camp,
+      playerAction: 'where am I?',
+      forceCheck: null,
+      skipTravel: true,
+      rng: createSeededRng(5),
+    });
+    assert.equal(where.campaign.session.locationId, 'interior.kettle-cellar');
+    assert.match(where.prose, /You are at Inn Cellar/i);
+    assert.doesNotMatch(where.prose, /You are at Common Room/i);
+
+    const refuse = await resolveSceneBeat({
+      campaign: camp,
+      playerAction: 'walk to the moon',
+      forceCheck: null,
+      rng: createSeededRng(6),
+    });
+    assert.equal(refuse.travel, null);
+    assert.equal(refuse.campaign.session.locationId, 'interior.kettle-cellar');
+    assert.match(refuse.prose, /cannot reach|nearby/i);
+  });
+
+  it('TRAVEL-01 hierarchical leave: room → parent; region stays', async () => {
+    let camp = createCampaign({
+      id: 'scene-leave',
+      session: { locationId: 'interior.kettle-common', turn: 2 },
+    });
+    const leave = await resolveSceneBeat({
+      campaign: camp,
+      playerAction: 'I leave the room',
+      forceCheck: null,
+      rng: createSeededRng(11),
+    });
+    assert.ok(leave.travel);
+    assert.equal(leave.travel!.via, 'parent-leave');
+    assert.equal(leave.campaign.session.locationId, 'place.copper-kettle');
+    assert.match(leave.prose, /arrive|Copper Kettle/i);
+
+    camp = leave.campaign;
+    const outside = await resolveSceneBeat({
+      campaign: camp,
+      playerAction: 'go outside',
+      forceCheck: null,
+      rng: createSeededRng(12),
+    });
+    assert.equal(outside.campaign.session.locationId, 'locale.emberford');
+    assert.match(outside.prose, /arrive|Emberford/i);
+
+    // Climb to region root then leave again → at-boundary, no move.
+    camp = createCampaign({
+      id: 'scene-leave-top',
+      session: { locationId: 'region.embervale', turn: 5 },
+    });
+    const top = await resolveSceneBeat({
+      campaign: camp,
+      playerAction: 'I leave',
+      forceCheck: null,
+      rng: createSeededRng(13),
+    });
+    assert.equal(top.travel, null);
+    assert.equal(top.campaign.session.locationId, 'region.embervale');
+    assert.match(top.prose, /already at|open edge|nowhere higher/i);
+  });
+
+  it('COMBAT-01: attack language enters combat on campaign', async () => {
+    const camp = createCampaign({
+      id: 'scene-combat-enter',
+      party: [createCharacter({ id: 'pc', name: 'Rook' })],
+      session: { locationId: 'interior.kettle-common', turn: 1 },
+    });
+    const beat = await resolveSceneBeat({
+      campaign: camp,
+      playerAction: 'I attack the shadow in the corner',
+      forceCheck: null,
+      rng: createSeededRng(7),
+    });
+    assert.equal(beat.campaign.world?.combat?.inCombat, true);
   });
 
   it('showMe returns stub still placeholder offline', async () => {

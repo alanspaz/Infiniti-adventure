@@ -33,9 +33,16 @@ export function CombatRail({ bottomInset = 0 }: CombatRailProps) {
     [state.character],
   );
 
+  // COMBAT-01: whole rail hidden until combat.active (inCombat).
+  if (!state.combat.inCombat) {
+    return null;
+  }
+
   const hp = state.combat.hp;
   const maxHp = state.combat.maxHp ?? derived?.maxHitPoints ?? null;
-  const ac = derived?.armorClass ?? null;
+  const baseAc = derived?.armorClass ?? null;
+  const tempAc = state.combat.tempAcBonus ?? 0;
+  const ac = baseAc == null ? null : baseAc + tempAc;
   const active = state.combat.mode;
 
   return (
@@ -51,7 +58,11 @@ export function CombatRail({ bottomInset = 0 }: CombatRailProps) {
             {hp == null || maxHp == null ? '—' : `${hp}/${maxHp}`}
           </Text>
           {ac != null ? (
-            <Text style={styles.ac}> · AC {ac}</Text>
+            <Text style={styles.ac}>
+              {' '}
+              · AC {ac}
+              {tempAc > 0 ? ` (+${tempAc} stance)` : ''}
+            </Text>
           ) : null}
         </Text>
         {state.combat.lastAction ? (

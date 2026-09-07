@@ -74,6 +74,15 @@ export type NarratorSceneRequest = {
     lastWaitTick: number;
     prose: string | null;
   } | null;
+  /**
+   * TRAVEL-01: structured travel result from Map exits.
+   * arrived → narrate the NEW place; refused → honest stub, no move.
+   */
+  travelOutcome?:
+    | { kind: 'arrived'; place: NarratorLocationHint }
+    | { kind: 'refused'; attempted?: string }
+    | { kind: 'at-boundary'; place: NarratorLocationHint }
+    | null;
 };
 
 export type NarratorSceneSource =
@@ -285,6 +294,45 @@ function proseForLocationHint(hint: NarratorLocationHint | null | undefined): st
   return `You are at ${name}. ${nearbyBit}`;
 }
 
+/** TRAVEL-01: arrival at a nearby exit destination. */
+function proseForArrival(place: NarratorLocationHint): string {
+  const name = place.name?.trim() || 'a new place';
+  const desc = (place.description ?? '').replace(/\s+/g, ' ').trim();
+  const nearby = place.nearby ?? [];
+  const nearbyBit =
+    nearby.length === 0
+      ? 'Nothing obvious is nearby from here.'
+      : `Nearby: ${nearby
+          .map((e) => {
+            const dest = e.toName?.trim() || 'somewhere';
+            const label = e.label?.trim();
+            return label ? `${dest} (${label})` : dest;
+          })
+          .join('; ')}.`;
+  if (desc) {
+    return `You arrive at ${name}. ${desc} ${nearbyBit}`;
+  }
+  return `You arrive at ${name}. ${nearbyBit}`;
+}
+
+/** TRAVEL-01: go/walk/head to a place that is not a nearby exit. */
+function proseForTravelRefuse(attempted?: string): string {
+  void attempted;
+  return (
+    'You cannot reach that from here. Check the Map for nearby places, ' +
+    'or name a nearby exit in the Tale.'
+  );
+}
+
+/** TRAVEL-01: leave past the top of the Region → … chain. */
+function proseForAtBoundary(place: NarratorLocationHint): string {
+  const name = place.name?.trim() || 'the open wilds';
+  return (
+    `You are already at ${name} — the open edge of the map. ` +
+    'There is nowhere higher to leave toward from here. Name a nearby place if you want to travel.'
+  );
+}
+
 /** Action-aware stub body — never echoes raw playerAction into prose. */
 function flavorBodyForAction(
   action: string | undefined,
@@ -395,8 +443,17 @@ function resolveStubProse(request: NarratorSceneRequest): {
     }
   } else if (beat === 'custom') {
     // Never echo raw playerAction into player-facing prose.
-    // World-tick (wait/fuel) → ambient prose. Location Q → Map-truth. Else varied flavor.
-    if (request.worldTick?.prose?.trim()) {
+    // Travel arrival/refuse → Map-truth. World-tick → ambient. Location Q → Map-truth.
+    if (request.travelOutcome?.kind === 'arrived') {
+      body = proseForArrival(request.travelOutcome.place);
+      source = 'canned';
+    } else if (request.travelOutcome?.kind === 'at-boundary') {
+      body = proseForAtBoundary(request.travelOutcome.place);
+      source = 'canned';
+    } else if (request.travelOutcome?.kind === 'refused') {
+      body = proseForTravelRefuse(request.travelOutcome.attempted);
+      source = 'canned';
+    } else if (request.worldTick?.prose?.trim()) {
       body = request.worldTick.prose.trim();
       source = 'canned';
     } else if (isLocationQuestion(request.playerAction)) {

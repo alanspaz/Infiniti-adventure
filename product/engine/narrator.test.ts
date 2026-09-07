@@ -117,6 +117,30 @@ describe('narrator provider', () => {
     });
     assert.match(go.prose, /footing|Thresholds|roads|rooms|path|Forward|Doorframes/i);
     assert.doesNotMatch(go.prose, /go down to the cellar/i);
+
+    const arrive = await provider.narrateScene({
+      beat: 'custom',
+      playerAction: 'go to the cellar',
+      partyNames: [],
+      travelOutcome: {
+        kind: 'arrived',
+        place: {
+          name: 'Inn Cellar',
+          description: 'Cool stone and casks.',
+          nearby: [{ toName: 'Common Room', label: 'up' }],
+        },
+      },
+    });
+    assert.match(arrive.prose, /arrive at Inn Cellar/i);
+    assert.doesNotMatch(arrive.prose, /go to the cellar/i);
+
+    const refuse = await provider.narrateScene({
+      beat: 'custom',
+      playerAction: 'go to the moon',
+      partyNames: [],
+      travelOutcome: { kind: 'refused', attempted: 'go to the moon' },
+    });
+    assert.match(refuse.prose, /cannot reach|nearby/i);
   });
 
   it('stub player prose omits raw turn markers and location ids', async () => {

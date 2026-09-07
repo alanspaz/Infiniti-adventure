@@ -60,15 +60,11 @@ function PlayShellInner({ onLeave }: { onLeave: () => void }) {
   const insets = useSafeAreaInsets();
   const sideBySide = width >= SIDE_PANEL_BREAKPOINT && surface !== 'story';
 
-  const subtitle = state.character
-    ? `${state.character.name} · Level ${state.character.level}`
-    : 'Solo · ready when you are';
-
   const openPanel = (id: PlayPanelId) => setSurface(id);
   const openStory = () => setSurface('story');
   const panelOpen = surface !== 'story';
 
-  const panel = renderPanel(surface, campaign, replaceCampaign);
+  const panel = renderPanel(surface, campaign, replaceCampaign, state.title);
 
   // UX-01: lift play chrome with keyboard; pad Android system nav under CombatRail.
   const bottomPad = Math.max(insets.bottom, 8);
@@ -80,16 +76,9 @@ function PlayShellInner({ onLeave }: { onLeave: () => void }) {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
     >
       <View style={[styles.root, { paddingTop: Math.max(insets.top, 0) }]}>
+      {/* UI-03: chat-first Tale — adventure name + PC/level live on Settings / Character */}
       <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text style={styles.kicker}>Adventure</Text>
-          <Text style={styles.title} numberOfLines={1}>
-            {state.title}
-          </Text>
-          <Text style={styles.subtitle} numberOfLines={1}>
-            {subtitle}
-          </Text>
-        </View>
+        <Text style={styles.kicker}>Tale</Text>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Back to home"
@@ -181,6 +170,7 @@ function renderPanel(
   surface: PlaySurfaceId,
   campaign: CampaignSave,
   replaceCampaign: (c: CampaignSave) => void,
+  adventureTitle: string,
 ): React.ReactNode {
   switch (surface) {
     case 'quest':
@@ -205,7 +195,7 @@ function renderPanel(
     case 'stills':
       return <StillsScreen campaign={campaign} embedded />;
     case 'settings':
-      return <SettingsScreen embedded />;
+      return <SettingsScreen embedded adventureLabel={adventureTitle} />;
     default:
       return null;
   }
@@ -222,12 +212,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: theme.spacing.md,
     paddingTop: theme.spacing.sm,
-    paddingBottom: theme.spacing.sm,
+    paddingBottom: theme.spacing.xs,
     backgroundColor: theme.colors.background,
-  },
-  headerText: {
-    flex: 1,
-    marginRight: theme.spacing.sm,
   },
   kicker: {
     color: theme.colors.accent,
@@ -235,16 +221,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1,
-  },
-  title: {
-    color: theme.colors.text,
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  subtitle: {
-    color: theme.colors.textMuted,
-    fontSize: 13,
-    marginTop: 2,
   },
   leave: {
     borderWidth: 1,

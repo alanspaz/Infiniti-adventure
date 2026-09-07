@@ -14,12 +14,18 @@ import { theme } from '../theme';
 type Props = {
   onBack?: () => void;
   embedded?: boolean;
+  /** UI-03: adventure / save name lives on Settings (not Tale chrome). */
+  adventureLabel?: string | null;
 };
 
 const VERBOSITY_OPTIONS: Verbosity[] = ['short', 'standard', 'lush'];
 const PROVIDER_OPTIONS: ProviderKind[] = ['stub', 'remote', 'on-device'];
 
-export function SettingsScreen({ onBack, embedded = false }: Props) {
+export function SettingsScreen({
+  onBack,
+  embedded = false,
+  adventureLabel = null,
+}: Props) {
   const {
     ready,
     verbosity,
@@ -66,6 +72,15 @@ export function SettingsScreen({ onBack, embedded = false }: Props) {
 
       <Text style={styles.title}>Settings</Text>
       {!ready ? <Text style={styles.hint}>Loading…</Text> : null}
+
+      {adventureLabel ? (
+        <>
+          <Text style={styles.section}>Adventure / save</Text>
+          <View style={styles.adventureCard}>
+            <Text style={styles.adventureLabel}>{adventureLabel}</Text>
+          </View>
+        </>
+      ) : null}
 
       <Text style={styles.section}>Narrator verbosity</Text>
       <View style={styles.row}>
@@ -216,6 +231,19 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '700',
     marginBottom: theme.spacing.lg,
+  },
+  adventureCard: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 12,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+  },
+  adventureLabel: {
+    color: theme.colors.text,
+    fontSize: 16,
+    fontWeight: '700',
   },
   section: {
     color: theme.colors.accent,

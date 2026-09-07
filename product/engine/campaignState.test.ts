@@ -250,18 +250,70 @@ describe('campaignToState / story stubs', () => {
     assert.equal(complete.completeQuestId, 'q1');
   });
 
-  it('combatActionPatch writes mode and HP', () => {
+  it('combatActionPatch targets foes / stance — no self-damage or magic heal', () => {
     const c = createCampaign({
       id: 'fight',
       party: [createCharacter({ id: 'pc', name: 'Asha' })],
-      world: { quests: [] },
+      world: {
+        quests: [],
+        combat: {
+          inCombat: true,
+          hp: 10,
+          maxHp: 10,
+          mode: 'idle',
+          lastAction: null,
+          tempAcBonus: 0,
+          foeHp: 8,
+          foeMaxHp: 8,
+        },
+      },
     });
     const state = campaignToState(c);
-    const patch = combatActionPatch('defend', state.combat);
-    const next = campaignToState(applyCampaignPatch(c, patch));
-    assert.equal(next.combat.mode, 'defend');
-    assert.equal(next.combat.lastAction, 'Defend');
-    assert.ok((next.combat.hp ?? 0) >= (state.combat.hp ?? 0));
+    const hp0 = state.combat.hp ?? 0;
+
+    const attack = campaignToState(
+      applyCampaignPatch(c, combatActionPatch('attack', state.combat)),
+    );
+    assert.equal(attack.combat.hp, hp0);
+    assert.ok((attack.combat.foeHp ?? 8) < 8);
+    assert.match(attack.combat.lastAction ?? '', /Attack/i);
+
+    const cast = campaignToState(
+      applyCampaignPatch(c, combatActionPatch('cast', state.combat)),
+    );
+    assert.equal(cast.combat.hp, hp0);
+    assert.ok((cast.combat.foeHp ?? 8) < 8);
+
+    const defend = campaignToState(
+      applyCampaignPatch(c, combatActionPatch('defend', state.combat)),
+    );
+    assert.equal(defend.combat.hp, hp0);
+    assert.equal(defend.combat.tempAcBonus, 2);
+    assert.match(defend.combat.lastAction ?? '', /Defend/i);
+
+    const use = campaignToState(
+      applyCampaignPatch(
+        c,
+        combatActionPatch('use-item', state.combat, state.inventory),
+      ),
+    );
+    assert.equal(use.combat.hp, hp0);
+    assert.match(use.combat.lastAction ?? '', /nothing usable/i);
+
+    const idle = combatActionPatch('attack', {
+      ...state.combat,
+      inCombat: false,
+    });
+    assert.deepEqual(idle, {});
+  });
+
+  it('patchesFromSceneBeat enters combat on attack language', () => {
+    const p = patchesFromSceneBeat({ playerAction: 'I attack the rat' });
+    assert.equal(p.combat?.inCombat, true);
+    assert.ok((p.combat?.foeHp ?? 0) > 0);
+
+    const end = patchesFromSceneBeat({ playerAction: 'I flee the fight' });
+    assert.equal(end.combat?.inCombat, false);
   });
 
   it('empty party remains valid', () => {

@@ -81,7 +81,9 @@ export function CampaignStateProvider({
 
   const runCombatAction = useCallback(
     (mode: Exclude<CombatMode, 'idle'>) => {
-      const patch = combatActionPatch(mode, campaignToState(campaign).combat);
+      const snap = campaignToState(campaign);
+      const patch = combatActionPatch(mode, snap.combat, snap.inventory);
+      if (!patch.combat && !patch.removeItemId && !patch.inventory) return;
       onCampaignChange(applyCampaignPatch(campaign, patch));
     },
     [campaign, onCampaignChange],

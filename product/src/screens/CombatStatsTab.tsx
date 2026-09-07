@@ -54,6 +54,11 @@ export function CombatStatsTab({ asSection = false }: Props) {
           ) : state.combat.lastAction ? (
             <Text style={styles.last}>Stance: {state.combat.lastAction}</Text>
           ) : null}
+          <Text style={styles.hint}>
+            {state.combat.inCombat
+              ? 'In combat — rail actions target foes / stance.'
+              : 'Out of combat — combat rail is hidden.'}
+          </Text>
           <View style={styles.statRow}>
             <Stat
               label="HP"
@@ -61,7 +66,12 @@ export function CombatStatsTab({ asSection = false }: Props) {
                 hp == null || maxHp == null ? '—' : `${hp}/${maxHp}`
               }
             />
-            <Stat label="Armor" value={String(derived.armorClass)} />
+            <Stat
+              label="Armor"
+              value={String(
+                derived.armorClass + (state.combat.tempAcBonus ?? 0),
+              )}
+            />
             <Stat label="Init" value={formatMod(derived.initiativeBonus)} />
             <Stat label="Prof" value={formatMod(derived.proficiencyBonus)} />
           </View>
