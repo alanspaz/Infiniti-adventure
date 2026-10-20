@@ -2,6 +2,7 @@
  * CampaignState — single source of truth for PlayShell panels.
  * Persists via CampaignSave.world (+ existing party/session fields).
  */
+import { normalizeFoe, spawnFoe, type FoeState } from './bestiary';
 import { deriveStats } from './derived';
 import type { CampaignFlagValue, CampaignSave, SessionState, StoryBeatRecord } from './save';
 import type { CharacterSheet, Party } from './types';
@@ -81,9 +82,15 @@ export type CombatState = {
   lastAction: string | null;
   /** Temporary AC from Defend/Dodge stance — not HP. */
   tempAcBonus: number;
-  /** Stub foe hit points while in combat (Attack/Cast damage this). */
+  /** Foe HP mirror (kept equal to foe.hp / foe.maxHp for older readers). */
   foeHp: number | null;
   foeMaxHp: number | null;
+  /** COMBAT-02: the current opponent's stat block (null out of combat). */
+  foe: FoeState | null;
+  /** Player stance until their next action: defend = +2 AC, dodge = foe disadvantage. */
+  stance: 'none' | 'defend' | 'dodge';
+  /** Rounds elapsed in this fight. */
+  round: number;
 };
 
 /** COMBAT-01: treat inCombat as the active flag. */
@@ -288,6 +295,9 @@ export function createEmptyCombat(): CombatState {
     tempAcBonus: 0,
     foeHp: null,
     foeMaxHp: null,
+    foe: null,
+    stance: 'none',
+    round: 0,
   };
 }
 
@@ -436,8 +446,19 @@ function normalizeCombat(value: CombatState | undefined): CombatState {
     value.foeHp === null || value.foeHp === undefined
       ? null
       : Math.max(0, Math.floor(Number(value.foeHp)));
+  const inCombat = Boolean(value.inCombat);
+  let foe = inCombat ? normalizeFoe((value as CombatState).foe) : null;
+  // Legacy in-combat saves (pre COMBAT-02) had only foeHp — synthesize a foe.
+  if (inCombat && !foe) {
+    const legacy = spawnFoe(null);
+    const max = foeMax ?? legacy.maxHp;
+    foe = { ...legacy, maxHp: max, hp: Math.min(max, foeHpRaw ?? max) };
+  }
+  const stanceRaw = (value as CombatState).stance;
+  const stance: CombatState['stance'] =
+    inCombat && (stanceRaw === 'defend' || stanceRaw === 'dodge') ? stanceRaw : 'none';
   return {
-    inCombat: Boolean(value.inCombat),
+    inCombat,
     hp:
       value.hp === null || value.hp === undefined
         ? null
@@ -457,8 +478,11 @@ function normalizeCombat(value: CombatState | undefined): CombatState {
       0,
       Math.floor(Number((value as CombatState).tempAcBonus) || 0),
     ),
-    foeHp: foeHpRaw,
-    foeMaxHp: foeMax,
+    foeHp: foe ? foe.hp : null,
+    foeMaxHp: foe ? foe.maxHp : null,
+    foe,
+    stance,
+    round: inCombat ? Math.max(0, Math.floor(Number((value as CombatState).round) || 0)) : 0,
   };
 }
 
@@ -771,6 +795,8 @@ export function patchesFromSceneBeat(input: {
   storyBeats?: StoryBeatRecord[];
   /** Current quests — used to resolve complete/fail stubs. */
   quests?: QuestRecord[];
+  /** Current location (COMBAT-02 foe table). */
+  locationId?: string | null;
 }): CampaignStatePatch {
   const patch: CampaignStatePatch = {};
   const action = (input.playerAction ?? '').trim();
@@ -864,36 +890,27 @@ export function patchesFromSceneBeat(input: {
     };
   }
 
-  // COMBAT-01: Tale attack language enters combat; flee/end exits.
+  // COMBAT-01/02: Tale attack language enters combat (with a foe); end-words exit.
   if (detectCombatExitFromAction(action)) {
-    patch.combat = {
-      ...(patch.combat ?? {}),
-      inCombat: false,
-      mode: 'idle',
-      tempAcBonus: 0,
-      foeHp: null,
-      foeMaxHp: null,
-      lastAction: 'Combat ends',
-    };
+    patch.combat = { ...(patch.combat ?? {}), ...exitCombatPatch(undefined).combat };
   } else if (detectCombatEnterFromAction(action)) {
     patch.combat = {
       ...(patch.combat ?? {}),
-      inCombat: true,
-      mode: 'idle',
-      tempAcBonus: 0,
-      foeHp: DEFAULT_FOE_HP,
-      foeMaxHp: DEFAULT_FOE_HP,
-      lastAction: 'Combat begins',
+      ...enterCombatPatch(undefined, 'Combat begins', input.locationId ?? null).combat,
     };
   }
 
   return patch;
 }
 
+/**
+ * Deliberate violence (COMBAT-02 narrowed: no bare "hit", so "hit the road"
+ * doesn't start a fight).
+ */
 const FIGHT_ENTER_RE =
-  /\b(?:attack|strike|hit|fight|swing|engage|cast\s+(?:at|on)|shoot|slash)\b/i;
+  /\b(?:attack|strike|fight|swing\s+at|stab|slash|shoot|punch|kick|engage|cast\s+(?:at|on)|look\s+for\s+(?:trouble|a\s+fight)|hunt|ambush)\b/i;
 const FIGHT_EXIT_RE =
-  /\b(?:flee|retreat|end\s+(?:the\s+)?(?:fight|combat)|spare(?:\s+them)?|surrender|victory|combat\s+ends|fight\s+(?:ends|over)|stand\s+down)\b/i;
+  /\b(?:flee|retreat|end\s+(?:the\s+)?(?:fight|combat)|spare(?:\s+them)?|surrender|combat\s+ends|fight\s+(?:ends|over)|stand\s+down)\b/i;
 
 export function detectCombatEnterFromAction(action: string): boolean {
   return FIGHT_ENTER_RE.test(action.trim());
@@ -903,15 +920,17 @@ export function detectCombatExitFromAction(action: string): boolean {
   return FIGHT_EXIT_RE.test(action.trim());
 }
 
-const DEFAULT_FOE_HP = 8;
-
+/** Start a fight: seeds HP and spawns a foe for the location (if none yet). */
 export function enterCombatPatch(
   combat: CombatState | undefined,
   reason = 'Combat begins',
+  locationId: string | null = null,
+  foeRoll = 0,
 ): CampaignStatePatch {
   const base = normalizeCombat(combat);
   const maxHp = base.maxHp ?? 10;
   const hp = base.hp ?? maxHp;
+  const foe = base.inCombat && base.foe ? base.foe : spawnFoe(locationId, foeRoll);
   return {
     combat: {
       inCombat: true,
@@ -920,8 +939,11 @@ export function enterCombatPatch(
       mode: 'idle',
       lastAction: reason,
       tempAcBonus: 0,
-      foeHp: base.foeHp ?? DEFAULT_FOE_HP,
-      foeMaxHp: base.foeMaxHp ?? DEFAULT_FOE_HP,
+      foe,
+      foeHp: foe.hp,
+      foeMaxHp: foe.maxHp,
+      stance: 'none',
+      round: base.inCombat ? base.round : 0,
     },
   };
 }
@@ -941,120 +963,9 @@ export function exitCombatPatch(
       tempAcBonus: 0,
       foeHp: null,
       foeMaxHp: null,
+      foe: null,
+      stance: 'none',
+      round: 0,
     },
   };
-}
-
-function findHealingConsumable(
-  inventory: InventoryState | undefined,
-): InventoryItem | null {
-  if (!inventory?.items?.length) return null;
-  const healName = /\b(potion|salve|bandage|elixir|heal|medic)\b/i;
-  for (const it of inventory.items) {
-    if (it.qty < 1) continue;
-    if (it.kind === 'consumable' && healName.test(it.name)) return it;
-    if (healName.test(it.name)) return it;
-  }
-  return null;
-}
-
-/**
- * Combat rail stub actions (COMBAT-01).
- * Attack/Cast damage the stub foe — never self-damage.
- * Defend/Dodge = temporary AC/stance — never HP gain.
- * Use Item = inventory heal only when a healing item exists; else stub refusal.
- */
-export function combatActionPatch(
-  mode: Exclude<CombatMode, 'idle'>,
-  combat: CombatState,
-  inventory?: InventoryState,
-): CampaignStatePatch {
-  // Rail should be hidden out of combat; ignore stray calls.
-  if (!combat.inCombat) {
-    return {};
-  }
-
-  const maxHp = combat.maxHp ?? 10;
-  let hp = combat.hp ?? maxHp;
-  const foeMaxHp = combat.foeMaxHp ?? DEFAULT_FOE_HP;
-  let foeHp = combat.foeHp ?? foeMaxHp;
-  let tempAcBonus = 0;
-  let lastAction: string = mode;
-  let removeItemId: string | undefined;
-
-  switch (mode) {
-    case 'attack': {
-      const dmg = 2;
-      foeHp = Math.max(0, foeHp - dmg);
-      lastAction = `Attack — foe takes ${dmg} (${foeHp}/${foeMaxHp})`;
-      break;
-    }
-    case 'cast': {
-      const dmg = 3;
-      foeHp = Math.max(0, foeHp - dmg);
-      lastAction = `Cast — foe takes ${dmg} (${foeHp}/${foeMaxHp})`;
-      break;
-    }
-    case 'defend':
-      tempAcBonus = 2;
-      lastAction = 'Defend — guarding (+2 AC)';
-      break;
-    case 'dodge':
-      tempAcBonus = 1;
-      lastAction = 'Dodge — evasive footing';
-      break;
-    case 'use-item': {
-      const heal = findHealingConsumable(inventory);
-      if (heal) {
-        const healAmt = 4;
-        hp = Math.min(maxHp, hp + healAmt);
-        removeItemId = heal.id;
-        // consume one: remove entirely if qty 1 handled by remove; stack reduce via patch
-        lastAction = `Use Item — ${heal.name} restores ${healAmt} HP`;
-      } else {
-        lastAction = 'Use Item — nothing usable';
-      }
-      break;
-    }
-    default:
-      break;
-  }
-
-  let inCombat = true;
-  let nextMode: CombatMode = mode;
-  if (foeHp <= 0) {
-    inCombat = false;
-    nextMode = 'idle';
-    tempAcBonus = 0;
-    lastAction = `${lastAction}; foe falls — combat ends`;
-    foeHp = 0;
-  }
-
-  const patch: CampaignStatePatch = {
-    combat: {
-      inCombat,
-      mode: nextMode,
-      hp,
-      maxHp,
-      lastAction,
-      tempAcBonus: inCombat ? tempAcBonus : 0,
-      foeHp: inCombat ? foeHp : null,
-      foeMaxHp: inCombat ? foeMaxHp : null,
-    },
-  };
-
-  if (removeItemId && inventory) {
-    const item = inventory.items.find((i) => i.id === removeItemId);
-    if (item && item.qty > 1) {
-      patch.inventory = {
-        items: inventory.items.map((i) =>
-          i.id === removeItemId ? { ...i, qty: i.qty - 1 } : i,
-        ),
-      };
-    } else if (item) {
-      patch.removeItemId = removeItemId;
-    }
-  }
-
-  return patch;
 }

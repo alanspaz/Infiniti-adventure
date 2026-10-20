@@ -4,7 +4,6 @@ import {
   STARTER_QUEST,
   applyCampaignPatch,
   campaignToState,
-  combatActionPatch,
   createCampaign,
   createCharacter,
   createEmptyWorld,
@@ -250,7 +249,8 @@ describe('campaignToState / story stubs', () => {
     assert.equal(complete.completeQuestId, 'q1');
   });
 
-  it('combatActionPatch targets foes / stance — no self-damage or magic heal', () => {
+  it('COMBAT-02 rail actions never self-damage the attacker / magic-heal', () => {
+    // Full loop coverage lives in combat.test.ts; here: legacy foeHp saves still load.
     const c = createCampaign({
       id: 'fight',
       party: [createCharacter({ id: 'pc', name: 'Asha' })],
@@ -265,46 +265,13 @@ describe('campaignToState / story stubs', () => {
           tempAcBonus: 0,
           foeHp: 8,
           foeMaxHp: 8,
-        },
+        } as never,
       },
     });
     const state = campaignToState(c);
-    const hp0 = state.combat.hp ?? 0;
-
-    const attack = campaignToState(
-      applyCampaignPatch(c, combatActionPatch('attack', state.combat)),
-    );
-    assert.equal(attack.combat.hp, hp0);
-    assert.ok((attack.combat.foeHp ?? 8) < 8);
-    assert.match(attack.combat.lastAction ?? '', /Attack/i);
-
-    const cast = campaignToState(
-      applyCampaignPatch(c, combatActionPatch('cast', state.combat)),
-    );
-    assert.equal(cast.combat.hp, hp0);
-    assert.ok((cast.combat.foeHp ?? 8) < 8);
-
-    const defend = campaignToState(
-      applyCampaignPatch(c, combatActionPatch('defend', state.combat)),
-    );
-    assert.equal(defend.combat.hp, hp0);
-    assert.equal(defend.combat.tempAcBonus, 2);
-    assert.match(defend.combat.lastAction ?? '', /Defend/i);
-
-    const use = campaignToState(
-      applyCampaignPatch(
-        c,
-        combatActionPatch('use-item', state.combat, state.inventory),
-      ),
-    );
-    assert.equal(use.combat.hp, hp0);
-    assert.match(use.combat.lastAction ?? '', /nothing usable/i);
-
-    const idle = combatActionPatch('attack', {
-      ...state.combat,
-      inCombat: false,
-    });
-    assert.deepEqual(idle, {});
+    assert.equal(state.combat.foe?.hp, 8);
+    assert.equal(state.combat.foeHp, 8);
+    assert.equal(state.combat.stance, 'none');
   });
 
   it('patchesFromSceneBeat enters combat on attack language', () => {

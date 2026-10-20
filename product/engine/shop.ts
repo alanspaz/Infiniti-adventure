@@ -390,6 +390,14 @@ export function openShopAt(state: CampaignState): {
   patch: CampaignStatePatch | null;
   narration: string;
 } {
+  if (state.combat.inCombat) {
+    return {
+      ok: false,
+      merchantId: null,
+      patch: null,
+      narration: 'Not now — there is a fight on your hands.',
+    };
+  }
   const def = merchantForLocation(state.locationId);
   if (!def) {
     return {

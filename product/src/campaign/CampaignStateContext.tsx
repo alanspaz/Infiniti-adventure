@@ -14,7 +14,7 @@ import {
   applyTrade,
   closeShopPatch,
   campaignToState,
-  combatActionPatch,
+  applyCombatTurn,
   type ItemActionRequest,
   type ItemActionResult,
   type ProgressionRequest,
@@ -80,6 +80,7 @@ export function CampaignStateProvider({
 
   const state = useMemo(() => campaignToState(campaign), [campaign]);
 
+
   const applyPatch = useCallback(
     (patch: CampaignStatePatch) => {
       onCampaignChange(applyCampaignPatch(campaign, patch));
@@ -101,10 +102,11 @@ export function CampaignStateProvider({
 
   const runCombatAction = useCallback(
     (mode: Exclude<CombatMode, 'idle'>) => {
-      const snap = campaignToState(campaign);
-      const patch = combatActionPatch(mode, snap.combat, snap.inventory);
-      if (!patch.combat && !patch.removeItemId && !patch.inventory) return;
-      onCampaignChange(applyCampaignPatch(campaign, patch));
+      // COMBAT-02: full dice-backed round (player then foe), logged to Tale.
+      const { campaign: next } = applyCombatTurn(campaign, mode, {
+        logRejection: true,
+      });
+      if (next !== campaign) onCampaignChange(next);
     },
     [campaign, onCampaignChange],
   );

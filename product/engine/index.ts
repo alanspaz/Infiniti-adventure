@@ -17,3 +17,5 @@ export * from './ambient';
 export * from './items';
 export * from './progression';
 export * from './shop';
+export * from './bestiary';
+export * from './combat';

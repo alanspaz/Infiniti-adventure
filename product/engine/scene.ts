@@ -606,7 +606,12 @@ export async function resolveSceneBeat(
   } else if (action && detectCombatEnterFromAction(action)) {
     campaign = applyCampaignPatch(
       campaign,
-      enterCombatPatch(campaign.world?.combat, 'Combat begins'),
+      enterCombatPatch(
+        campaign.world?.combat,
+        'Combat begins',
+        campaign.session.locationId ?? null,
+        rng(),
+      ),
     );
   }
 

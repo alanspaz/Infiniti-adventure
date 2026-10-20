@@ -86,6 +86,37 @@ async function main() {
   assert.match(shopSrc, /runTrade/);
   assert.match(shopSrc, /tradeLedger/);
   assert.doesNotMatch(shopSrc, /useState[^;]*\b(items|stock|gold|inventory)\b/i);
+  // COMBAT-02: seeded fight from the Tale → rounds → end; rail hidden after.
+  {
+    const hero = engine.createCharacter({ id: 'smoke-fight', name: 'Fighter', abilities: { strength: 16 } });
+    let c = engine.createCampaign({
+      id: 'smoke-fight',
+      party: [hero],
+      session: { locationId: 'locale.ashen-fields', rngSeed: 4242 },
+    });
+    const start = engine.applyCombatIntent(c, 'look for trouble');
+    assert.ok(start);
+    c = start!.campaign;
+    assert.equal(engine.isCombatActive(engine.campaignToState(c).combat), true);
+    const mid = engine.parseCampaign(engine.serializeCampaign(c));
+    assert.deepEqual(engine.campaignToState(mid).combat, engine.campaignToState(c).combat);
+    let outcome = 'continue';
+    for (let i = 0; i < 60 && outcome === 'continue'; i++) {
+      const r = engine.applyCombatTurn(c, 'attack');
+      c = r.campaign;
+      outcome = r.result.outcome;
+    }
+    assert.ok(outcome === 'victory' || outcome === 'defeat', outcome);
+    const end = engine.campaignToState(c);
+    assert.equal(engine.isCombatActive(end.combat), false);
+    assert.ok(end.inventory.gold >= 0);
+    assert.ok((end.combat.hp ?? 0) >= 1);
+  }
+  const railSrc = fs.readFileSync(
+    path.join(__dirname, '../src/components/CombatRail.tsx'),
+    'utf8',
+  );
+  assert.match(railSrc, /if \(!state\.combat\.inCombat\)\s*\{\s*return null;/);
   const progSrc = fs.readFileSync(
     path.join(__dirname, '../src/screens/ProgressionSection.tsx'),
     'utf8',

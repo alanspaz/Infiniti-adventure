@@ -11,6 +11,7 @@ import {
 import type { CampaignSave, StoryBeatRecord } from '../../engine';
 import {
   applyCampaignPatch,
+  applyCombatIntent,
   applyOpenShop,
   createSeededRng,
   createStarterMap,
@@ -221,6 +222,7 @@ export function SceneScreen({
         placeLine,
         storyBeats: records,
         quests: beat.campaign.world?.quests,
+        locationId: beat.campaign.session.locationId,
       });
       // Prefer engine campaign (turn/location/log) then overlay patches.
       let saved = withSession(beat.campaign, { storyBeats: records });
@@ -441,6 +443,14 @@ export function SceneScreen({
   const submitAction = () => {
     const text = action.trim();
     if (!text || busy) return;
+    // COMBAT-02: fight actions resolve with dice in the engine (rules-first);
+    // attack verbs start a fight; mid-fight text maps to rail actions.
+    const fight = applyCombatIntent(campaign, text);
+    if (fight) {
+      setAction('');
+      onCampaignChange(fight.campaign);
+      return;
+    }
     // P-INT-04: "trade"/"shop"/"buy"… opens the merchant here (rules-first,
     // stub greeting or honest refusal as the narrator beat). Travel wins.
     if (

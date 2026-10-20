@@ -63,10 +63,20 @@ export function CombatRail({ bottomInset = 0 }: CombatRailProps) {
             <Text style={styles.ac}>
               {' '}
               · AC {ac}
-              {tempAc > 0 ? ` (+${tempAc} stance)` : ''}
+              {tempAc > 0 ? ` (+${tempAc} guard)` : ''}
+              {state.combat.stance === 'dodge' ? ' (dodging)' : ''}
             </Text>
           ) : null}
         </Text>
+        {state.combat.foe ? (
+          <Text style={styles.foeLine} numberOfLines={1}>
+            {state.combat.foe.name}{' '}
+            <Text style={styles.hpValue}>
+              {state.combat.foe.hp}/{state.combat.foe.maxHp}
+            </Text>
+            <Text style={styles.ac}> · AC {state.combat.foe.ac}</Text>
+          </Text>
+        ) : null}
         {state.combat.lastAction ? (
           <Text style={styles.last} numberOfLines={1}>
             Last: {state.combat.lastAction}
@@ -129,6 +139,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     marginBottom: 2,
+  },
+  foeLine: {
+    color: theme.colors.danger,
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 1,
   },
   hpLine: {
     color: theme.colors.textMuted,
