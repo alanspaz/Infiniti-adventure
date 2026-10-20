@@ -4,6 +4,7 @@ import {
   STARTER_KIT_FLAG,
   describeItem,
   itemTraits,
+  merchantForLocation,
   safeInventory,
   starterKitPatch,
   type InventoryItem,
@@ -19,7 +20,9 @@ import { theme } from '../theme';
  * Use / equip / drop also append a narrator beat to the Tale.
  */
 export function ItemsTab() {
-  const { state, runItemAction, applyPatch } = useCampaignState();
+  const { state, runItemAction, applyPatch, openShop } = useCampaignState();
+  // P-INT-04: secondary entry point to trade where a merchant works.
+  const merchantHere = merchantForLocation(state.locationId);
   const inv = safeInventory(state.inventory);
   const gold = inv.gold;
   const items = inv.items;
@@ -66,6 +69,17 @@ export function ItemsTab() {
           </Text>
         ) : null}
       </View>
+
+      {merchantHere && !state.combat.inCombat ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Trade with ${merchantHere.keeper}`}
+          onPress={() => openShop(`Trade with ${merchantHere.keeper}`)}
+          style={({ pressed }) => [styles.btn, styles.tradeBtn, pressed && styles.pressed]}
+        >
+          <Text style={styles.btnLabel}>Trade with {merchantHere.keeper}</Text>
+        </Pressable>
+      ) : null}
 
       {feedback ? (
         <Text
@@ -353,6 +367,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     minWidth: 44,
     alignItems: 'center',
+  },
+  tradeBtn: {
+    alignSelf: 'stretch',
+    marginBottom: theme.spacing.md,
   },
   kitBtn: {
     alignSelf: 'flex-start',

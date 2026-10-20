@@ -16,3 +16,4 @@ export * from './campaignState';
 export * from './ambient';
 export * from './items';
 export * from './progression';
+export * from './shop';

@@ -54,6 +54,38 @@ async function main() {
     assert.equal(back.progression.unspentPoints, 1);
     assert.equal(back.combat.maxHp, engine.deriveStats(back.character!).maxHitPoints);
   }
+  // P-INT-04 shop: open via Tale helper, buy/sell, checksum, round-trip.
+  {
+    const hero = engine.createCharacter({ id: 'smoke-shop', name: 'Shopper' });
+    let c = engine.createCampaign({
+      id: 'smoke-shop',
+      party: [hero],
+      session: { locationId: 'interior.kettle-common' },
+    });
+    c = engine.applyCampaignPatch(c, { grantGold: 20 });
+    c = engine.applyOpenShop(c, 'trade').campaign;
+    const mId = engine.campaignToState(c).shop.activeMerchantId!;
+    assert.equal(mId, 'merchant.kettle');
+    const before = engine.tradeLedger(engine.campaignToState(c), mId);
+    c = engine.applyTrade(c, { kind: 'buy', merchantId: mId, itemId: 'healing-potion' }).campaign;
+    c = engine.applyTrade(c, { kind: 'sell', merchantId: mId, itemId: 'healing-potion' }).campaign;
+    const after = engine.tradeLedger(engine.campaignToState(c), mId);
+    assert.equal(after.totalGold, before.totalGold);
+    assert.equal(after.totalUnits, before.totalUnits);
+    const back = engine.campaignToState(engine.parseCampaign(engine.serializeCampaign(c)));
+    assert.deepEqual(back.merchants, engine.campaignToState(c).merchants);
+    assert.equal(
+      engine.applyTrade(c, { kind: 'buy', merchantId: mId, itemId: 'rope' }).result.ok,
+      after.playerGold >= 2,
+    );
+  }
+  const shopSrc = fs.readFileSync(
+    path.join(__dirname, '../src/screens/ShopPanel.tsx'),
+    'utf8',
+  );
+  assert.match(shopSrc, /runTrade/);
+  assert.match(shopSrc, /tradeLedger/);
+  assert.doesNotMatch(shopSrc, /useState[^;]*\b(items|stock|gold|inventory)\b/i);
   const progSrc = fs.readFileSync(
     path.join(__dirname, '../src/screens/ProgressionSection.tsx'),
     'utf8',

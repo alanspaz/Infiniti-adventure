@@ -132,6 +132,51 @@ export function normalizeProgression(
   };
 }
 
+/** P-INT-04: one merchant's persisted purse + stock (seeded from tables on first trade). */
+export type MerchantState = {
+  gold: number;
+  stock: InventoryItem[];
+};
+
+/** P-INT-04: which merchant's shop is open (null = closed). */
+export type ShopState = {
+  activeMerchantId: string | null;
+  /** Location where the shop was opened; moving elsewhere closes it on read. */
+  atLocationId: string | null;
+};
+
+function normalizeMerchants(
+  value: Record<string, MerchantState> | undefined | null,
+): Record<string, MerchantState> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out: Record<string, MerchantState> = {};
+  for (const [id, m] of Object.entries(value)) {
+    if (!m || typeof m !== 'object') continue;
+    out[String(id)] = {
+      gold: Math.max(0, Math.floor(Number(m.gold) || 0)),
+      stock: Array.isArray(m.stock)
+        ? m.stock
+            .filter((it) => it && typeof it === 'object')
+            .map((it) => {
+              const { equipped: _e, ...rest } = normalizeInventoryItem(it);
+              return rest;
+            })
+        : [],
+    };
+  }
+  return out;
+}
+
+function normalizeShop(value: ShopState | undefined | null): ShopState {
+  const id = value?.activeMerchantId;
+  const at = value?.atLocationId;
+  const active = typeof id === 'string' && id ? id : null;
+  return {
+    activeMerchantId: active,
+    atLocationId: active && typeof at === 'string' && at ? at : null,
+  };
+}
+
 /** Durable world slice stored on CampaignSave (optional for older saves). */
 export type CampaignWorldState = {
   inventory: InventoryState;
@@ -140,6 +185,8 @@ export type CampaignWorldState = {
   storyMeta: StoryMeta;
   playPrefs: CampaignPlayPrefs;
   progression: ProgressionState;
+  merchants: Record<string, MerchantState>;
+  shop: ShopState;
 };
 
 /** Unified read model for PlayShell — one store, no per-tab copies. */
@@ -157,6 +204,8 @@ export type CampaignState = {
   combat: CombatState;
   playPrefs: CampaignPlayPrefs;
   progression: ProgressionState;
+  merchants: Record<string, MerchantState>;
+  shop: ShopState;
   storyBeats: StoryBeatRecord[];
   storyMeta: StoryMeta;
   flags: Record<string, CampaignFlagValue>;
@@ -196,6 +245,10 @@ export type CampaignStatePatch = {
   grantXp?: number;
   /** Direct progression write (used by level-up / point spend rules). */
   progression?: Partial<ProgressionState>;
+  /** P-INT-04: upsert merchant purse/stock by merchant id. */
+  merchants?: Record<string, MerchantState>;
+  /** P-INT-04: open/close a shop. Location change closes it unless set. */
+  shop?: Partial<ShopState>;
   /** Upsert quest by id (story stub / accept fallback). */
   upsertQuest?: QuestRecord;
   /** Accept a quest (status forced active). */
@@ -256,6 +309,8 @@ export function createEmptyWorld(
     storyMeta: normalizeStoryMeta(patch?.storyMeta),
     playPrefs: normalizePlayPrefs(patch?.playPrefs),
     progression: normalizeProgression(patch?.progression),
+    merchants: normalizeMerchants(patch?.merchants),
+    shop: normalizeShop(patch?.shop),
   };
 }
 
@@ -485,6 +540,13 @@ export function campaignToState(campaign: CampaignSave): CampaignState {
     combat,
     playPrefs: world.playPrefs,
     progression: world.progression,
+    merchants: world.merchants,
+    // Shop only counts as open where it was opened (travel closes it).
+    shop:
+      world.shop.activeMerchantId &&
+      world.shop.atLocationId === (campaign.session.locationId ?? null)
+        ? world.shop
+        : { activeMerchantId: null, atLocationId: null },
     storyBeats,
     storyMeta: {
       ...world.storyMeta,
@@ -658,6 +720,11 @@ export function applyCampaignPatch(
       ...(patch.playPrefs ?? {}),
     }),
     progression: { ...baseProg, xp: baseProg.xp + xpGain },
+    merchants: normalizeMerchants({
+      ...world.merchants,
+      ...(patch.merchants ?? {}),
+    }),
+    shop: normalizeShop(patch.shop ? { ...world.shop, ...patch.shop } : world.shop),
   };
 
   let session = campaign.session;

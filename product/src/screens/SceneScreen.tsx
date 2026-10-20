@@ -11,8 +11,11 @@ import {
 import type { CampaignSave, StoryBeatRecord } from '../../engine';
 import {
   applyCampaignPatch,
+  applyOpenShop,
   createSeededRng,
   createStarterMap,
+  detectTradeIntent,
+  detectTravelIntent,
   patchesFromSceneBeat,
   resolveSceneBeat,
   whereAmI,
@@ -438,6 +441,20 @@ export function SceneScreen({
   const submitAction = () => {
     const text = action.trim();
     if (!text || busy) return;
+    // P-INT-04: "trade"/"shop"/"buy"… opens the merchant here (rules-first,
+    // stub greeting or honest refusal as the narrator beat). Travel wins.
+    if (
+      detectTradeIntent(text) &&
+      detectTravelIntent(
+        text,
+        map,
+        campaign.session.locationId ?? map.startNodeId,
+      ).kind === 'none'
+    ) {
+      setAction('');
+      onCampaignChange(applyOpenShop(campaign, text).campaign);
+      return;
+    }
     pendingPlayerLine.current = text;
     setAction('');
     // Optimistic player + narrator bubble so submit is never visually silent.

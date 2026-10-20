@@ -14,7 +14,8 @@ export type PlayPanelId =
   | 'settings'
   | 'stills';
 
-export type PlaySurfaceId = 'story' | PlayPanelId;
+/** 'shop' opens from the Tale / Items (P-INT-04); it has no grid icon. */
+export type PlaySurfaceId = 'story' | PlayPanelId | 'shop';
 
 /** Icon grid panels — Character includes combat readiness (UI-02); no separate Combat tab. */
 export const PLAY_ICONS: { id: Exclude<PlayPanelId, 'stills'>; label: string }[] = [

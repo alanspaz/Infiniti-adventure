@@ -9,13 +9,18 @@ import type { CampaignSave } from '../../engine';
 import {
   applyCampaignPatch,
   applyItemAction,
+  applyOpenShop,
   applyProgressionAction,
+  applyTrade,
+  closeShopPatch,
   campaignToState,
   combatActionPatch,
   type ItemActionRequest,
   type ItemActionResult,
   type ProgressionRequest,
   type ProgressionResult,
+  type TradeRequest,
+  type TradeResult,
   type CampaignState,
   type CampaignStatePatch,
   type CombatMode,
@@ -34,6 +39,11 @@ type CampaignStateContextValue = {
   runItemAction: (req: ItemActionRequest) => ItemActionResult;
   /** P-INT-03: level-up / ability point spend → CampaignState patch. */
   runProgressionAction: (req: ProgressionRequest) => ProgressionResult;
+  /** P-INT-04: buy/sell one unit with the open merchant. */
+  runTrade: (req: TradeRequest) => TradeResult;
+  /** P-INT-04: open the shop here (Tale beat either way). */
+  openShop: (playerLine?: string) => boolean;
+  closeShop: () => void;
 };
 
 const CampaignStateContext = createContext<CampaignStateContextValue | null>(
@@ -117,6 +127,29 @@ export function CampaignStateProvider({
     [campaign, onCampaignChange],
   );
 
+  const runTrade = useCallback(
+    (req: TradeRequest): TradeResult => {
+      const { campaign: next, result } = applyTrade(campaign, req);
+      if (next !== campaign) onCampaignChange(next);
+      return result;
+    },
+    [campaign, onCampaignChange],
+  );
+
+  const openShop = useCallback(
+    (playerLine = 'Trade'): boolean => {
+      const res = applyOpenShop(campaign, playerLine);
+      onCampaignChange(res.campaign);
+      return res.ok;
+    },
+    [campaign, onCampaignChange],
+  );
+
+  const closeShop = useCallback(() => {
+    if (!campaign.world?.shop?.activeMerchantId) return;
+    onCampaignChange(applyCampaignPatch(campaign, closeShopPatch()));
+  }, [campaign, onCampaignChange]);
+
   const value = useMemo(
     () => ({
       state,
@@ -126,6 +159,9 @@ export function CampaignStateProvider({
       runCombatAction,
       runItemAction,
       runProgressionAction,
+      runTrade,
+      openShop,
+      closeShop,
     }),
     [
       state,
@@ -135,6 +171,9 @@ export function CampaignStateProvider({
       runCombatAction,
       runItemAction,
       runProgressionAction,
+      runTrade,
+      openShop,
+      closeShop,
     ],
   );
 

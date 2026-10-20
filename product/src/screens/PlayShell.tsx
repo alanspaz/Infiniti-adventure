@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -23,6 +23,7 @@ import { QuestTab } from './QuestTab';
 import { CharacterSheetScreen } from './CharacterSheetScreen';
 import { CompanionsTab } from './CompanionsTab';
 import { ItemsTab } from './ItemsTab';
+import { ShopPanel } from './ShopPanel';
 import { MapScreen } from './MapScreen';
 import { DiceScreen } from './DiceScreen';
 import { StillsScreen } from './StillsScreen';
@@ -54,18 +55,35 @@ export function PlayShell({ campaign, onCampaignChange, onLeave }: Props) {
 }
 
 function PlayShellInner({ onLeave }: { onLeave: () => void }) {
-  const { state, campaign, replaceCampaign } = useCampaignState();
+  const { state, campaign, replaceCampaign, closeShop } = useCampaignState();
   const [surface, setSurface] = useState<PlaySurfaceId>('story');
+
+  // P-INT-04: shop opens when CampaignState says so (Tale "trade" / Items);
+  // closes back to the Tale when the shop state clears (e.g. travel).
+  const activeMerchant = state.shop.activeMerchantId;
+  const lastMerchant = useRef<string | null>(activeMerchant);
+  useEffect(() => {
+    if (activeMerchant && activeMerchant !== lastMerchant.current) {
+      setSurface('shop');
+      setMenuOpen(false);
+    } else if (!activeMerchant && surface === 'shop') {
+      setSurface('story');
+    }
+    lastMerchant.current = activeMerchant;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMerchant]);
   const [menuOpen, setMenuOpen] = useState(false);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const sideBySide = width >= SIDE_PANEL_BREAKPOINT && surface !== 'story';
 
   const openPanel = (id: PlayPanelId) => {
+    if (surface === 'shop') closeShop();
     setSurface(id);
     setMenuOpen(false);
   };
   const openStory = () => {
+    if (surface === 'shop') closeShop();
     setSurface('story');
     setMenuOpen(false);
   };
@@ -189,6 +207,8 @@ function panelTitle(surface: PlaySurfaceId): string {
       return 'Map';
     case 'settings':
       return 'Settings';
+    case 'shop':
+      return 'Trade';
     case 'stills':
       return 'Visions';
     default:
@@ -212,6 +232,8 @@ function renderPanel(
       return <CompanionsTab />;
     case 'items':
       return <ItemsTab />;
+    case 'shop':
+      return <ShopPanel />;
     case 'map':
       return (
         <MapScreen
