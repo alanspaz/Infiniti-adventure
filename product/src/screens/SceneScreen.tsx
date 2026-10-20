@@ -372,6 +372,31 @@ export function SceneScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaign.id]);
 
+  // P-INT-01: beats appended outside the Tale (Items use/equip/drop) live on
+  // CampaignState.session.storyBeats — adopt them so the chat shows them and
+  // the next narrator turn doesn't overwrite them.
+  const savedBeats = campaign.session.storyBeats;
+  useEffect(() => {
+    if (bootstrappedFor.current !== campaign.id) return;
+    if (busy) return;
+    const saved = savedBeats ?? [];
+    if (saved.length === 0) return;
+    const local = beatsRef.current.filter((b) => !b.id.startsWith('pending-'));
+    const savedLast = saved[saved.length - 1]!.id;
+    if (local.some((b) => b.id === savedLast)) return;
+    const byId = new Map(local.map((b) => [b.id, b] as const));
+    const merged = recordsToBeats(saved).map((b) => {
+      const prev = byId.get(b.id);
+      return prev ? { ...b, still: prev.still } : b;
+    });
+    beatsRef.current = merged;
+    setBeats(merged);
+    setEarlierOpen(false);
+    requestAnimationFrame(() => {
+      logRef.current?.scrollToEnd({ animated: false });
+    });
+  }, [savedBeats, campaign.id, busy]);
+
   useEffect(() => {
     if (bootstrappedFor.current !== campaign.id) return;
     const loc = campaign.session.locationId ?? null;

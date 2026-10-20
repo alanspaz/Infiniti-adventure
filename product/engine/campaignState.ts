@@ -6,11 +6,28 @@ import { deriveStats } from './derived';
 import type { CampaignFlagValue, CampaignSave, SessionState, StoryBeatRecord } from './save';
 import type { CharacterSheet, Party } from './types';
 
+export type ItemSlot = 'weapon' | 'armor' | 'shield';
+
+/** Mechanical effect a consumable applies when used (P-INT-01). */
+export type ItemEffect = { type: 'heal'; amount: number };
+
 export type InventoryItem = {
   id: string;
   name: string;
   qty: number;
   kind?: 'gear' | 'consumable' | 'quest' | 'misc';
+  /** Equip slot (weapon/armor/shield); inferred from name when absent. */
+  slot?: ItemSlot;
+  /** True while worn/wielded. One item per slot. */
+  equipped?: boolean;
+  /** Consumable effect; inferred for potions/salves when absent. */
+  effect?: ItemEffect;
+  /** Armor: base AC (e.g. leather 11 → 11 + DEX). Shield: AC bonus. */
+  armorBase?: number;
+  /** Weapon damage dice label (display only until COMBAT-02). */
+  damage?: string;
+  /** Short inspect blurb. */
+  description?: string;
 };
 
 export type InventoryState = {
@@ -210,14 +227,44 @@ function normalizeInventory(value: InventoryState | undefined): InventoryState {
   const items = Array.isArray(value.items)
     ? value.items
         .filter((it) => it && typeof it === 'object')
-        .map((it) => ({
-          id: String(it.id),
-          name: String(it.name ?? 'Item'),
-          qty: Math.max(1, Math.floor(Number(it.qty) || 1)),
-          ...(it.kind ? { kind: it.kind } : {}),
-        }))
+        .map((it) => normalizeInventoryItem(it))
     : [];
   return { gold, items };
+}
+
+const ITEM_KINDS = ['gear', 'consumable', 'quest', 'misc'] as const;
+const ITEM_SLOTS: ItemSlot[] = ['weapon', 'armor', 'shield'];
+
+/** Normalize one inventory row; keeps optional P-INT-01 fields when valid. */
+export function normalizeInventoryItem(it: InventoryItem): InventoryItem {
+  const out: InventoryItem = {
+    id: String(it.id),
+    name: String(it.name ?? 'Item'),
+    qty: Math.max(1, Math.floor(Number(it.qty) || 1)),
+  };
+  if (it.kind && (ITEM_KINDS as readonly string[]).includes(it.kind)) {
+    out.kind = it.kind;
+  }
+  if (it.slot && ITEM_SLOTS.includes(it.slot)) out.slot = it.slot;
+  if (it.equipped === true) out.equipped = true;
+  if (
+    it.effect &&
+    typeof it.effect === 'object' &&
+    it.effect.type === 'heal' &&
+    Number(it.effect.amount) > 0
+  ) {
+    out.effect = { type: 'heal', amount: Math.floor(Number(it.effect.amount)) };
+  }
+  if (it.armorBase !== undefined && Number.isFinite(Number(it.armorBase))) {
+    out.armorBase = Math.max(0, Math.floor(Number(it.armorBase)));
+  }
+  if (typeof it.damage === 'string' && it.damage.trim()) {
+    out.damage = it.damage.trim();
+  }
+  if (typeof it.description === 'string' && it.description.trim()) {
+    out.description = it.description.trim();
+  }
+  return out;
 }
 
 function normalizeQuestStatus(status: unknown): QuestStatus {
@@ -457,12 +504,7 @@ function applyInventoryPatch(
   }
 
   if (patch.addItem) {
-    const item = {
-      id: String(patch.addItem.id),
-      name: String(patch.addItem.name),
-      qty: Math.max(1, Math.floor(patch.addItem.qty || 1)),
-      ...(patch.addItem.kind ? { kind: patch.addItem.kind } : {}),
-    };
+    const item = normalizeInventoryItem({ ...patch.addItem, equipped: false });
     const idx = next.items.findIndex((i) => i.id === item.id);
     if (idx >= 0) {
       const copy = [...next.items];

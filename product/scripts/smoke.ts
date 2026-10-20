@@ -26,6 +26,20 @@ async function main() {
   assert.equal(engine.campaignToState(invCamp).inventory.gold, 3);
   assert.equal(engine.campaignToState(invCamp).inventory.items.length, 0);
   assert.equal(engine.safeInventory({ gold: -1, items: [] }).gold, 0);
+  // P-INT-01 items: equip + use through CampaignState, round-trip.
+  {
+    const hero = engine.createCharacter({ id: 'smoke-pc', name: 'Smoke' });
+    let c = engine.createCampaign({ id: 'smoke-items', party: [hero], world: { quests: [] } });
+    c = engine.applyCampaignPatch(c, engine.starterKitPatch(engine.campaignToState(c))!);
+    c = engine.applyCampaignPatch(c, { combat: { hp: 1 } });
+    c = engine.applyItemAction(c, { kind: 'equip', itemId: 'starter-leather-armor' }).campaign;
+    c = engine.applyItemAction(c, { kind: 'use', itemId: 'starter-healing-potion' }).campaign;
+    const back = engine.campaignToState(engine.parseCampaign(engine.serializeCampaign(c)));
+    assert.equal(back.combat.hp, 5);
+    assert.equal(back.inventory.items.find((i: { id: string }) => i.id === 'starter-healing-potion')?.qty, 1);
+    assert.equal(engine.equippedLoadout(back.inventory).armor?.id, 'starter-leather-armor');
+    assert.equal(back.storyBeats.length, 2);
+  }
 
   assert.equal(typeof engine.MemoryPersistStore, 'function');
   assert.equal(typeof engine.ACTIVE_CAMPAIGN_KEY, 'string');
@@ -311,7 +325,10 @@ async function main() {
   const itemsSrc = fs.readFileSync(path.join(screensDir, 'ItemsTab.tsx'), 'utf8');
   assert.match(itemsSrc, /safeInventory|inventory/);
   assert.match(itemsSrc, /Gold/);
-  assert.doesNotMatch(itemsSrc, /useState\(/);
+  // P-INT-01: UI-only state (selection/feedback) is fine; never a local
+  // inventory copy — mutations go through runItemAction/applyPatch.
+  assert.match(itemsSrc, /runItemAction/);
+  assert.doesNotMatch(itemsSrc, /useState[^;]*\b(items|inventory|gold)\b/i);
 
 
   // App entry: prefer live import; if RN native bindings are absent in Node,

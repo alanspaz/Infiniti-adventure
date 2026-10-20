@@ -8,8 +8,11 @@ import React, {
 import type { CampaignSave } from '../../engine';
 import {
   applyCampaignPatch,
+  applyItemAction,
   campaignToState,
   combatActionPatch,
+  type ItemActionRequest,
+  type ItemActionResult,
   type CampaignState,
   type CampaignStatePatch,
   type CombatMode,
@@ -24,6 +27,8 @@ type CampaignStateContextValue = {
   applyPatch: (patch: CampaignStatePatch) => void;
   replaceCampaign: (next: CampaignSave) => void;
   runCombatAction: (mode: Exclude<CombatMode, 'idle'>) => void;
+  /** P-INT-01: Items panel action → CampaignState patch (+ Tale beat when meaningful). */
+  runItemAction: (req: ItemActionRequest) => ItemActionResult;
 };
 
 const CampaignStateContext = createContext<CampaignStateContextValue | null>(
@@ -89,6 +94,15 @@ export function CampaignStateProvider({
     [campaign, onCampaignChange],
   );
 
+  const runItemAction = useCallback(
+    (req: ItemActionRequest): ItemActionResult => {
+      const { campaign: next, result } = applyItemAction(campaign, req);
+      if (next !== campaign) onCampaignChange(next);
+      return result;
+    },
+    [campaign, onCampaignChange],
+  );
+
   const value = useMemo(
     () => ({
       state,
@@ -96,8 +110,9 @@ export function CampaignStateProvider({
       applyPatch,
       replaceCampaign,
       runCombatAction,
+      runItemAction,
     }),
-    [state, campaign, applyPatch, replaceCampaign, runCombatAction],
+    [state, campaign, applyPatch, replaceCampaign, runCombatAction, runItemAction],
   );
 
   return (

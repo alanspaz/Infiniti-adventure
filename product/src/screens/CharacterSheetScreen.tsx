@@ -2,7 +2,14 @@ import React, { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { AbilityKey, CampaignSave, CharacterSheet } from '../../engine';
-import { ABILITY_KEYS, deriveStats } from '../../engine';
+import {
+  ABILITY_KEYS,
+  armorClassWithGear,
+  deriveStats,
+  equippedLoadout,
+  itemTraits,
+  safeInventory,
+} from '../../engine';
 import { theme } from '../theme';
 import { CombatStatsTab } from './CombatStatsTab';
 
@@ -54,6 +61,10 @@ export function CharacterSheetScreen({ campaign, onBack, embedded = false }: Pro
     () => (pc ? deriveStats(pc) : null),
     [pc],
   );
+
+  const inventory = safeInventory(campaign?.world?.inventory);
+  const loadout = equippedLoadout(inventory);
+  const gearAc = pc ? armorClassWithGear(pc.abilities.dexterity, inventory) : null;
 
   // UX-01b: character / derived sections clear Android nav (outer pad + scroll pad).
   const bottomClear = Math.max(insets.bottom, 48) + 24;
@@ -126,7 +137,7 @@ export function CharacterSheetScreen({ campaign, onBack, embedded = false }: Pro
               );
             })()}
             <Text style={styles.meta}>
-              {pc.className} · Level {pc.level}
+              {pc.className} · Level {pc.level} · AC {gearAc}
             </Text>
             <Text style={styles.metaSmall}>Hit die d{pc.hitDie}</Text>
             {pc.age !== null ? (
@@ -150,6 +161,32 @@ export function CharacterSheetScreen({ campaign, onBack, embedded = false }: Pro
             </Text>
           </View>
 
+          <Text style={styles.section}>Equipped</Text>
+          <View style={styles.card}>
+            <StatRow
+              label="Weapon"
+              value={
+                loadout.weapon
+                  ? `${loadout.weapon.name} (${itemTraits(loadout.weapon).damage})`
+                  : 'Unarmed'
+              }
+            />
+            <StatRow
+              label="Armor"
+              value={
+                loadout.armor
+                  ? `${loadout.armor.name} (AC ${itemTraits(loadout.armor).armorBase} + DEX)`
+                  : 'None'
+              }
+            />
+            {loadout.shield ? (
+              <StatRow
+                label="Shield"
+                value={`${loadout.shield.name} (+${itemTraits(loadout.shield).armorBase})`}
+              />
+            ) : null}
+          </View>
+
           <Text style={styles.section}>Abilities</Text>
           <View style={styles.card}>
             {ABILITY_KEYS.map((key) => (
@@ -169,7 +206,10 @@ export function CharacterSheetScreen({ campaign, onBack, embedded = false }: Pro
               label="Proficiency bonus"
               value={formatMod(derived.proficiencyBonus)}
             />
-            <StatRow label="Armor class" value={String(derived.armorClass)} />
+            <StatRow
+              label="Armor class"
+              value={String(gearAc ?? derived.armorClass)}
+            />
             <StatRow
               label="Max hit points"
               value={String(derived.maxHitPoints)}

@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { deriveStats, type CombatMode } from '../../engine';
+import { armorClassWithGear, deriveStats, type CombatMode } from '../../engine';
 import { useCampaignState } from '../campaign';
 import { appImages } from '../images';
 import { theme } from '../theme';
@@ -40,7 +40,9 @@ export function CombatRail({ bottomInset = 0 }: CombatRailProps) {
 
   const hp = state.combat.hp;
   const maxHp = state.combat.maxHp ?? derived?.maxHitPoints ?? null;
-  const baseAc = derived?.armorClass ?? null;
+  const baseAc = state.character
+    ? armorClassWithGear(state.character.abilities.dexterity, state.inventory)
+    : (derived?.armorClass ?? null);
   const tempAc = state.combat.tempAcBonus ?? 0;
   const ac = baseAc == null ? null : baseAc + tempAc;
   const active = state.combat.mode;

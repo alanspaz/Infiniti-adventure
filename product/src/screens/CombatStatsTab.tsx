@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { ABILITY_KEYS, deriveStats } from '../../engine';
+import { ABILITY_KEYS, armorClassWithGear, deriveStats } from '../../engine';
 import { useCampaignState } from '../campaign';
 import { theme } from '../theme';
 
@@ -69,7 +69,9 @@ export function CombatStatsTab({ asSection = false }: Props) {
             <Stat
               label="Armor"
               value={String(
-                derived.armorClass + (state.combat.tempAcBonus ?? 0),
+                (pc
+                  ? armorClassWithGear(pc.abilities.dexterity, state.inventory)
+                  : derived.armorClass) + (state.combat.tempAcBonus ?? 0),
               )}
             />
             <Stat label="Init" value={formatMod(derived.initiativeBonus)} />
