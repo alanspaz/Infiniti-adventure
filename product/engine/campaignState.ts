@@ -104,6 +104,34 @@ export type CampaignPlayPrefs = {
   verbosity: 'short' | 'standard' | 'lush';
 };
 
+/**
+ * P-INT-03 progression for the active PC (party[0]).
+ * Level itself lives on the CharacterSheet; XP + unspent points live here.
+ */
+export type ProgressionState = {
+  /** Lifetime XP (never negative). */
+  xp: number;
+  /** Ability points earned from level-ups, not yet spent. */
+  unspentPoints: number;
+};
+
+/** XP granted when a quest moves active → done (any path). */
+export const QUEST_COMPLETE_XP = 100;
+
+export function createEmptyProgression(): ProgressionState {
+  return { xp: 0, unspentPoints: 0 };
+}
+
+export function normalizeProgression(
+  value: Partial<ProgressionState> | undefined | null,
+): ProgressionState {
+  if (!value || typeof value !== 'object') return createEmptyProgression();
+  return {
+    xp: Math.max(0, Math.floor(Number(value.xp) || 0)),
+    unspentPoints: Math.max(0, Math.floor(Number(value.unspentPoints) || 0)),
+  };
+}
+
 /** Durable world slice stored on CampaignSave (optional for older saves). */
 export type CampaignWorldState = {
   inventory: InventoryState;
@@ -111,6 +139,7 @@ export type CampaignWorldState = {
   combat: CombatState;
   storyMeta: StoryMeta;
   playPrefs: CampaignPlayPrefs;
+  progression: ProgressionState;
 };
 
 /** Unified read model for PlayShell — one store, no per-tab copies. */
@@ -127,6 +156,7 @@ export type CampaignState = {
   session: SessionState;
   combat: CombatState;
   playPrefs: CampaignPlayPrefs;
+  progression: ProgressionState;
   storyBeats: StoryBeatRecord[];
   storyMeta: StoryMeta;
   flags: Record<string, CampaignFlagValue>;
@@ -159,6 +189,13 @@ export type CampaignStatePatch = {
   grantGold?: number;
   /** Spend gold; rejected (no change) if amount > current gold. */
   spendGold?: number;
+  /**
+   * P-INT-03: grant XP to the active PC (floored; negatives ignored).
+   * Does not level up by itself — the player levels up from Character.
+   */
+  grantXp?: number;
+  /** Direct progression write (used by level-up / point spend rules). */
+  progression?: Partial<ProgressionState>;
   /** Upsert quest by id (story stub / accept fallback). */
   upsertQuest?: QuestRecord;
   /** Accept a quest (status forced active). */
@@ -218,6 +255,7 @@ export function createEmptyWorld(
     combat: normalizeCombat(patch?.combat),
     storyMeta: normalizeStoryMeta(patch?.storyMeta),
     playPrefs: normalizePlayPrefs(patch?.playPrefs),
+    progression: normalizeProgression(patch?.progression),
   };
 }
 
@@ -446,6 +484,7 @@ export function campaignToState(campaign: CampaignSave): CampaignState {
     session: campaign.session,
     combat,
     playPrefs: world.playPrefs,
+    progression: world.progression,
     storyBeats,
     storyMeta: {
       ...world.storyMeta,
@@ -592,9 +631,23 @@ export function applyCampaignPatch(
   patch: CampaignStatePatch,
 ): CampaignSave {
   const world = normalizeWorld(campaign.world);
+  const nextQuests = applyQuestPatch(world.quests, patch);
+  // P-INT-03: quests newly completed (active → done) grant XP.
+  const newlyDone = nextQuests.filter(
+    (q) =>
+      q.status === 'done' &&
+      world.quests.some((p) => p.id === q.id && p.status === 'active'),
+  ).length;
+  const baseProg = normalizeProgression({
+    ...world.progression,
+    ...(patch.progression ?? {}),
+  });
+  const xpGain =
+    Math.max(0, Math.floor(Number(patch.grantXp) || 0)) +
+    newlyDone * QUEST_COMPLETE_XP;
   const nextWorld: CampaignWorldState = {
     inventory: applyInventoryPatch(world.inventory, patch),
-    quests: applyQuestPatch(world.quests, patch),
+    quests: nextQuests,
     combat: normalizeCombat({ ...world.combat, ...(patch.combat ?? {}) }),
     storyMeta: normalizeStoryMeta({
       ...world.storyMeta,
@@ -604,6 +657,7 @@ export function applyCampaignPatch(
       ...world.playPrefs,
       ...(patch.playPrefs ?? {}),
     }),
+    progression: { ...baseProg, xp: baseProg.xp + xpGain },
   };
 
   let session = campaign.session;

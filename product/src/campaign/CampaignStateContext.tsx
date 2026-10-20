@@ -9,10 +9,13 @@ import type { CampaignSave } from '../../engine';
 import {
   applyCampaignPatch,
   applyItemAction,
+  applyProgressionAction,
   campaignToState,
   combatActionPatch,
   type ItemActionRequest,
   type ItemActionResult,
+  type ProgressionRequest,
+  type ProgressionResult,
   type CampaignState,
   type CampaignStatePatch,
   type CombatMode,
@@ -29,6 +32,8 @@ type CampaignStateContextValue = {
   runCombatAction: (mode: Exclude<CombatMode, 'idle'>) => void;
   /** P-INT-01: Items panel action → CampaignState patch (+ Tale beat when meaningful). */
   runItemAction: (req: ItemActionRequest) => ItemActionResult;
+  /** P-INT-03: level-up / ability point spend → CampaignState patch. */
+  runProgressionAction: (req: ProgressionRequest) => ProgressionResult;
 };
 
 const CampaignStateContext = createContext<CampaignStateContextValue | null>(
@@ -103,6 +108,15 @@ export function CampaignStateProvider({
     [campaign, onCampaignChange],
   );
 
+  const runProgressionAction = useCallback(
+    (req: ProgressionRequest): ProgressionResult => {
+      const { campaign: next, result } = applyProgressionAction(campaign, req);
+      if (next !== campaign) onCampaignChange(next);
+      return result;
+    },
+    [campaign, onCampaignChange],
+  );
+
   const value = useMemo(
     () => ({
       state,
@@ -111,8 +125,17 @@ export function CampaignStateProvider({
       replaceCampaign,
       runCombatAction,
       runItemAction,
+      runProgressionAction,
     }),
-    [state, campaign, applyPatch, replaceCampaign, runCombatAction, runItemAction],
+    [
+      state,
+      campaign,
+      applyPatch,
+      replaceCampaign,
+      runCombatAction,
+      runItemAction,
+      runProgressionAction,
+    ],
   );
 
   return (

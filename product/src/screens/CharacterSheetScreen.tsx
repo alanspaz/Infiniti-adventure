@@ -12,6 +12,7 @@ import {
 } from '../../engine';
 import { theme } from '../theme';
 import { CombatStatsTab } from './CombatStatsTab';
+import { ProgressionSection } from './ProgressionSection';
 
 /** CHAR-01: stub mana/focus by class flavor — "—" when the class has none. */
 function resourceSlotsFor(className: string): { mana: string; focus: string } {
@@ -160,6 +161,9 @@ export function CharacterSheetScreen({ campaign, onBack, embedded = false }: Pro
               {campaign.playstylePackId ?? 'none'}
             </Text>
           </View>
+
+          {/* P-INT-03: XP / level-up / ability points (directly under HP header). */}
+          {embedded ? <ProgressionSection /> : null}
 
           <Text style={styles.section}>Equipped</Text>
           <View style={styles.card}>

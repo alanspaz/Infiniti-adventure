@@ -40,6 +40,26 @@ async function main() {
     assert.equal(engine.equippedLoadout(back.inventory).armor?.id, 'starter-leather-armor');
     assert.equal(back.storyBeats.length, 2);
   }
+  // P-INT-03 progression: quest XP → level-up → spend, round-trip.
+  {
+    const hero = engine.createCharacter({ id: 'smoke-lv', name: 'Lv' });
+    let c = engine.createCampaign({ id: 'smoke-prog', party: [hero] });
+    c = engine.applyCampaignPatch(c, { completeQuestId: engine.STARTER_QUEST.id });
+    assert.equal(engine.campaignToState(c).progression.xp, engine.QUEST_COMPLETE_XP);
+    assert.equal(engine.applyProgressionAction(c, { kind: 'spend-point', ability: 'strength' }).result.ok, false);
+    c = engine.applyProgressionAction(c, { kind: 'level-up' }).campaign;
+    c = engine.applyProgressionAction(c, { kind: 'spend-point', ability: 'constitution' }).campaign;
+    const back = engine.campaignToState(engine.parseCampaign(engine.serializeCampaign(c)));
+    assert.equal(back.character!.level, 2);
+    assert.equal(back.progression.unspentPoints, 1);
+    assert.equal(back.combat.maxHp, engine.deriveStats(back.character!).maxHitPoints);
+  }
+  const progSrc = fs.readFileSync(
+    path.join(__dirname, '../src/screens/ProgressionSection.tsx'),
+    'utf8',
+  );
+  assert.match(progSrc, /runProgressionAction/);
+  assert.doesNotMatch(progSrc, /useState[^;]*\b(xp|level|abilities|unspent)/i);
 
   assert.equal(typeof engine.MemoryPersistStore, 'function');
   assert.equal(typeof engine.ACTIVE_CAMPAIGN_KEY, 'string');
