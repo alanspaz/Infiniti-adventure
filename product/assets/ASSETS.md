@@ -79,3 +79,40 @@ Still needed (falls back today):
 - Foes (in combat): `foe:foe.ash-wolf`, `foe:foe.scarecrow-husk`, `foe:foe.road-bandit`, `foe:foe.cellar-rat`, `foe:foe.ruffian`.
 
 To wire a new file: add `require` in `src/images.ts`, an art id in `BackdropArtId` + `BACKDROP_IMAGES`, and the key in `BACKDROP_ART`.
+
+## Tale backdrops (BG-01) — Artist delivery
+
+Drop path: `product/assets/backdrops/`. Format: progressive JPEG (opaque art, much smaller than PNG; Metro `require` handles `.jpg`).
+New scene/speaker art is portrait 720×1280 (9:16), subject in upper/middle, dark calm lower third for the chat log. Target ~150–350 KB each.
+
+| File | Backdrop key(s) | Use |
+|------|-----------------|-----|
+| `backdrops/emberford.jpg` | `location:locale.emberford` | Riverside town street, chimneys, market awnings, dusk lanterns |
+| `backdrops/ashen-fields.jpg` | `location:locale.ashen-fields` | Pale ash farmland, leaning scarecrows, windmill, watch-stones |
+| `backdrops/brightanvil.jpg` | `location:place.brightanvil` | Open forge yard, anvil sparks, weapon racks |
+| `backdrops/smith-forge.jpg` | `location:interior.smith-forge` | Forge floor: coals, bellows, quench tub, blade racks |
+| `backdrops/mossglass.jpg` | `location:place.mossglass` | Narrow apothecary: green bottles, drying herbs, green lamps |
+| `backdrops/alchemist-counter.jpg` | `location:interior.alchemist-counter` | Polished counter, vials, ledger + quill, scales |
+| `backdrops/kettle-cellar.jpg` | `location:interior.kettle-cellar` | Vaulted stone cellar, cider casks, locked chest, stairs up |
+| `backdrops/kettle-common.jpg` | `location:interior.kettle-common` (optional) | Inn common room: big hearth, long bar, benches |
+| `backdrops/merchant-hollis.jpg` | `merchant:merchant.kettle` | Hollis the innkeeper wiping the bar |
+| `backdrops/merchant-dagna.jpg` | `merchant:merchant.brightanvil` | Dagna Brightanvil, smith, hammer on shoulder |
+| `backdrops/merchant-fennick.jpg` | `merchant:merchant.mossglass` | Fennick of Mossglass, alchemist over ledger |
+| `backdrops/foe-ash-wolf.jpg` | `foe:foe.ash-wolf` | Snarling cinder-grey wolf on ash fields |
+| `backdrops/foe-scarecrow-husk.jpg` | `foe:foe.scarecrow-husk` | Animated scarecrow, glowing eyes, straw/red-thread charm |
+| `backdrops/foe-road-bandit.jpg` | `foe:foe.road-bandit` | Hooded, masked bandit with dagger on the vale road |
+| `backdrops/foe-cellar-rat.jpg` | `foe:foe.cellar-rat` | Giant rat on a cask in the cellar |
+| `backdrops/foe-ruffian.jpg` | `foe:foe.ruffian` | Rowdy brawler, fists up, lantern-lit alley |
+
+All 16 above: 720×1280 portrait progressive JPEG, 159,061–254,032 B each, 3386347 B total. Subjects sit in the upper/middle, lower third kept dark for the scrim; no text, no NSFW, no gore.
+
+### Compressed copies of reused art (drop-in, same 1536×1024 framing)
+
+| File | Replaces (for backdrops only) | Size |
+|------|-------------------------------|------|
+| `backdrops/hearth-sm.jpg` | `packs/pack-hearthlight.png` (2,052,565 B) → `art.hearth` | 235,810 B |
+| `backdrops/vista-embervale-sm.jpg` | `splash-epic-cliffside.png` (2,342,564 B) → `art.vista` (`appImages.vistaEmbervale`) | 279,473 B |
+
+Originals untouched (PackSelect still uses `pack-hearthlight.png`; splash files unchanged). If `splash-epic-cliffside.png` is not used elsewhere, the backdrop can drop its 2.3 MB require entirely.
+
+Wiring sketch: `images.ts` → `bgEmberford: require('../assets/backdrops/emberford.jpg')` …; `BackdropArtId` add e.g. `'art.emberford' | 'art.merchant.hollis' | 'art.foe.ash-wolf'`; point `art.hearth`/`art.vista` at the `-sm.jpg` copies.

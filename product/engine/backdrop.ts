@@ -12,15 +12,53 @@
 import type { CampaignState } from './campaignState';
 import { createStarterMap, getMapNode, type MapGraph } from './map';
 
-/** Art ids that exist in product/assets (mapped to static requires in src/backdrop.tsx). */
-export type BackdropArtId = 'art.hearth' | 'art.vista';
+/** Art ids that exist in product/assets/backdrops (static requires in src/components/TaleBackdrop.tsx). */
+export const BACKDROP_ART_IDS = [
+  'art.hearth',
+  'art.vista',
+  'art.emberford',
+  'art.ashen-fields',
+  'art.brightanvil',
+  'art.smith-forge',
+  'art.mossglass',
+  'art.alchemist-counter',
+  'art.kettle-cellar',
+  'art.kettle-common',
+  'art.merchant.hollis',
+  'art.merchant.dagna',
+  'art.merchant.fennick',
+  'art.foe.ash-wolf',
+  'art.foe.scarecrow-husk',
+  'art.foe.road-bandit',
+  'art.foe.cellar-rat',
+  'art.foe.ruffian',
+] as const;
+export type BackdropArtId = (typeof BACKDROP_ART_IDS)[number];
 
-/** Keys that currently have art. Everything else falls back. */
+/** Backdrop key → art id (keys per assets/ASSETS.md BG-01 delivery). */
 export const BACKDROP_ART: Record<string, BackdropArtId> = {
-  // packs/pack-hearthlight.png — hearth interior: the Copper Kettle and its rooms.
+  // Reused art (compressed copies): hearth → Copper Kettle, vista → region default.
   'location:place.copper-kettle': 'art.hearth',
-  // splash-epic-cliffside.png — vista over the vale town: region-level default.
   'location:region.embervale': 'art.vista',
+  // Locations.
+  'location:locale.emberford': 'art.emberford',
+  'location:locale.ashen-fields': 'art.ashen-fields',
+  'location:place.brightanvil': 'art.brightanvil',
+  'location:interior.smith-forge': 'art.smith-forge',
+  'location:place.mossglass': 'art.mossglass',
+  'location:interior.alchemist-counter': 'art.alchemist-counter',
+  'location:interior.kettle-cellar': 'art.kettle-cellar',
+  'location:interior.kettle-common': 'art.kettle-common',
+  // Merchants (shop open).
+  'merchant:merchant.kettle': 'art.merchant.hollis',
+  'merchant:merchant.brightanvil': 'art.merchant.dagna',
+  'merchant:merchant.mossglass': 'art.merchant.fennick',
+  // Foes (in combat).
+  'foe:foe.ash-wolf': 'art.foe.ash-wolf',
+  'foe:foe.scarecrow-husk': 'art.foe.scarecrow-husk',
+  'foe:foe.road-bandit': 'art.foe.road-bandit',
+  'foe:foe.cellar-rat': 'art.foe.cellar-rat',
+  'foe:foe.ruffian': 'art.foe.ruffian',
 };
 
 export type BackdropMood = 'calm' | 'shop' | 'combat';
@@ -121,8 +159,8 @@ export function resolveBackdrop(
 }
 
 /**
- * Every location / speaker key that has no art of its own today
- * (they still render via fallback). Hand this to Artist.
+ * Every location / speaker key that has no art of its own
+ * (they still render via fallback). Empty after the BG-01 delivery.
  */
 export function backdropKeysNeedingArt(
   extraSpeakerKeys: string[],

@@ -11,8 +11,24 @@ import { theme } from '../theme';
 
 /** BG-01: art id → bundled static asset (no remote fetches). */
 export const BACKDROP_IMAGES: Record<BackdropArtId, ImageSourcePropType> = {
-  'art.hearth': appImages.packHearthlight,
+  'art.hearth': appImages.bgHearth,
   'art.vista': appImages.vistaEmbervale,
+  'art.emberford': appImages.bgEmberford,
+  'art.ashen-fields': appImages.bgAshenFields,
+  'art.brightanvil': appImages.bgBrightanvil,
+  'art.smith-forge': appImages.bgSmithForge,
+  'art.mossglass': appImages.bgMossglass,
+  'art.alchemist-counter': appImages.bgAlchemistCounter,
+  'art.kettle-cellar': appImages.bgKettleCellar,
+  'art.kettle-common': appImages.bgKettleCommon,
+  'art.merchant.hollis': appImages.bgMerchantHollis,
+  'art.merchant.dagna': appImages.bgMerchantDagna,
+  'art.merchant.fennick': appImages.bgMerchantFennick,
+  'art.foe.ash-wolf': appImages.bgFoeAshWolf,
+  'art.foe.scarecrow-husk': appImages.bgFoeScarecrowHusk,
+  'art.foe.road-bandit': appImages.bgFoeRoadBandit,
+  'art.foe.cellar-rat': appImages.bgFoeCellarRat,
+  'art.foe.ruffian': appImages.bgFoeRuffian,
 };
 
 /** Placeholder glow colours per region tint (theme-derived). */

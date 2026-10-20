@@ -124,9 +124,29 @@ async function main() {
       'utf8',
     );
     const imgSrc = fs.readFileSync(path.join(__dirname, '../src/images.ts'), 'utf8');
-    for (const artId of new Set(Object.values(engine.BACKDROP_ART) as string[])) {
-      assert.match(bdSrc, new RegExp(`'${artId.replace('.', '\\.')}':`), `unmapped ${artId}`);
+    // Each art id → appImages key in TaleBackdrop → require in images.ts → file on disk.
+    for (const artId of engine.BACKDROP_ART_IDS as readonly string[]) {
+      const esc = artId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const m = new RegExp(`'${esc}': appImages\\.(\\w+)`).exec(bdSrc);
+      assert.ok(m, `unmapped ${artId}`);
+      const req = new RegExp(`${m![1]}: require\\('\\.\\.\\/assets\\/([^']+)'\\)`).exec(imgSrc);
+      assert.ok(req, `no require for ${artId}`);
+      assert.ok(fs.existsSync(path.join(__dirname, '../assets', req![1]!)), `missing ${req![1]}`);
     }
+    for (const artId of Object.values(engine.BACKDROP_ART) as string[]) {
+      assert.ok((engine.BACKDROP_ART_IDS as readonly string[]).includes(artId), artId);
+    }
+    assert.deepEqual(
+      engine.backdropKeysNeedingArt([
+        ...engine.MERCHANTS.map((m: { id: string }) => `merchant:${m.id}`),
+        ...[...Object.values(engine.FOES_BY_LOCATION).flat(), engine.FALLBACK_FOE].map(
+          (f: { id: string }) => `foe:${f.id}`,
+        ),
+      ]),
+      [],
+    );
+    // Backdrop no longer pulls the 2.3 MB splash PNG.
+    assert.doesNotMatch(imgSrc, /splash-epic-cliffside/);
     for (const m of imgSrc.matchAll(/require\('\.\.\/assets\/([^']+)'\)/g)) {
       assert.ok(fs.existsSync(path.join(__dirname, '../assets', m[1]!)), `missing asset ${m[1]}`);
     }
