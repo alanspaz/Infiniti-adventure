@@ -13,6 +13,7 @@ import {
   applyCampaignPatch,
   applyCombatIntent,
   applyOpenShop,
+  campaignToState,
   createSeededRng,
   createStarterMap,
   detectTradeIntent,
@@ -27,6 +28,7 @@ import {
 import { createPlayNarrator } from '../ai';
 import { STUB_SAFE_PROSE } from '../../engine/narrator';
 import { StillFrame } from '../components/StillFrame';
+import { TaleBackdrop } from '../components/TaleBackdrop';
 import { appImages } from '../images';
 import { createAppStillProvider } from '../persist/stillCache';
 import { useSettings } from '../settings/SettingsContext';
@@ -492,6 +494,8 @@ export function SceneScreen({
     });
   };
 
+  const backdropState = useMemo(() => campaignToState(campaign), [campaign]);
+
   // UI-04: keep 4–5 most recent beats as full bubbles; older collapse into Earlier.
   const RECENT_VISIBLE = 5;
   const older =
@@ -530,6 +534,8 @@ export function SceneScreen({
 
   return (
     <View style={styles.flex}>
+      {/* BG-01: dim location/speaker backdrop behind the story log. */}
+      <TaleBackdrop state={backdropState} />
       <ScrollView
         ref={logRef}
         style={styles.scroll}
@@ -704,10 +710,11 @@ export function SceneScreen({
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
+  flex: { flex: 1, backgroundColor: theme.colors.background },
   scroll: {
     flex: 1,
-    backgroundColor: theme.colors.background,
+    // BG-01: transparent so TaleBackdrop shows through (parent keeps #140f0c).
+    backgroundColor: 'transparent',
   },
   root: {
     padding: theme.spacing.md,

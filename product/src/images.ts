@@ -6,6 +6,8 @@ export const appImages = {
   homeHero: require('../assets/home-hero.png') as ImageSourcePropType,
   packHearthlight: require('../assets/packs/pack-hearthlight.png') as ImageSourcePropType,
   packAshLedger: require('../assets/packs/pack-ash-ledger.png') as ImageSourcePropType,
+  /** BG-01 backdrop reuse: vale vista (region-level Tale backdrop). */
+  vistaEmbervale: require('../assets/splash-epic-cliffside.png') as ImageSourcePropType,
   stillLocation: require('../assets/stills/still-stub-location.png') as ImageSourcePropType,
   stillPlayer: require('../assets/stills/still-stub-player.png') as ImageSourcePropType,
   stillItem: require('../assets/stills/still-stub-item.png') as ImageSourcePropType,

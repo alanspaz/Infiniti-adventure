@@ -117,6 +117,29 @@ async function main() {
     'utf8',
   );
   assert.match(railSrc, /if \(!state\.combat\.inCombat\)\s*\{\s*return null;/);
+  // BG-01 backdrop: every art id is bundled (static require, file exists), no network.
+  {
+    const bdSrc = fs.readFileSync(
+      path.join(__dirname, '../src/components/TaleBackdrop.tsx'),
+      'utf8',
+    );
+    const imgSrc = fs.readFileSync(path.join(__dirname, '../src/images.ts'), 'utf8');
+    for (const artId of new Set(Object.values(engine.BACKDROP_ART) as string[])) {
+      assert.match(bdSrc, new RegExp(`'${artId.replace('.', '\\.')}':`), `unmapped ${artId}`);
+    }
+    for (const m of imgSrc.matchAll(/require\('\.\.\/assets\/([^']+)'\)/g)) {
+      assert.ok(fs.existsSync(path.join(__dirname, '../assets', m[1]!)), `missing asset ${m[1]}`);
+    }
+    assert.doesNotMatch(bdSrc, /https?:\/\/|uri:/);
+    const sceneSrc2 = fs.readFileSync(path.join(__dirname, '../src/screens/SceneScreen.tsx'), 'utf8');
+    assert.match(sceneSrc2, /<TaleBackdrop/);
+    const unknown = engine.resolveBackdrop({
+      locationId: 'nowhere',
+      combat: engine.createEmptyCombat(),
+      shop: { activeMerchantId: null, atLocationId: null },
+    });
+    assert.equal(unknown.source, 'placeholder');
+  }
   const progSrc = fs.readFileSync(
     path.join(__dirname, '../src/screens/ProgressionSection.tsx'),
     'utf8',
