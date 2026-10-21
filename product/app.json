@@ -11,7 +11,7 @@
       "resizeMode": "cover",
       "backgroundColor": "#140f0c"
     },
-    "platforms": ["ios", "android"],
+    "platforms": ["ios", "android", "web"],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.infiniteadventure.app"

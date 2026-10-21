@@ -584,9 +584,21 @@ async function main() {
     assert.ok(need > 0 && need <= num('cellMinHeight'), `icon grid label fits (${need} <= ${num('cellMinHeight')})`);
     assert.ok(!/\bheight:\s*44\b/.test(grid), 'icon grid has no fixed 44px cell height');
     assert.ok(src('src/screens/IdentityScreen.tsx').includes('maxLength={MAX_CHARACTER_NAME}'), 'name maxLength');
+    {
+      const id = src('src/screens/IdentityScreen.tsx');
+      assert.ok(id.includes('resolveSubmittedName(') && id.includes('ref={nameInputRef}'), 'name read at submit time');
+      assert.ok(!/debounce|setTimeout/i.test(id), 'no debounce on identity form');
+    }
     assert.ok(engine.MAX_CHARACTER_NAME >= 24, 'name allows 24+ chars');
     const rail = src('src/components/CombatRail.tsx');
     assert.ok(/mode:\s*'flee'/.test(rail), 'combat rail has Flee');
+    assert.ok(/mode:\s*'flee',\s*label:\s*'Flee',\s*icon:\s*'combatFlee'/.test(rail), 'Flee uses the Artist icon');
+    assert.ok(!rail.includes('↩'), 'no Flee glyph placeholder');
+    for (const k of ['attack', 'defend', 'dodge', 'cast', 'use-item', 'flee']) {
+      assert.ok(fs.existsSync(path.resolve(__dirname, '../assets/icons', `${k}.png`)), `rail icon ${k}.png`);
+    }
+    assert.ok(fs.existsSync(path.resolve(__dirname, '../assets/icons/flee-48.png')), 'flee-48.png');
+    assert.match(src('src/images.ts'), /combatFlee: require\('\.\.\/assets\/icons\/flee\.png'\)/);
     assert.ok(/flexWrap:\s*'nowrap'/.test(rail), 'combat rail keeps one row');
     assert.ok(src('src/screens/ShopPanel.tsx').includes('SHOP_ROW_HEIGHT'), 'shop rows fixed height');
   }

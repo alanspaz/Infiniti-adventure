@@ -10,19 +10,18 @@ import { useCampaignState } from '../campaign';
 import { appImages } from '../images';
 import { theme } from '../theme';
 
-/** Rail actions. Flee (QA-02) has no art yet — a gold glyph stands in. */
+/** Rail actions (UI-01 Artist icons; Flee added in QA-02). */
 export const COMBAT_RAIL_ACTIONS: {
   mode: CombatActionKind;
   label: string;
-  icon?: keyof typeof appImages;
-  glyph?: string;
+  icon: keyof typeof appImages;
 }[] = [
   { mode: 'attack', label: 'Attack', icon: 'combatAttack' },
   { mode: 'defend', label: 'Defend', icon: 'combatDefend' },
   { mode: 'dodge', label: 'Dodge', icon: 'combatDodge' },
   { mode: 'cast', label: 'Cast', icon: 'combatCast' },
   { mode: 'use-item', label: 'Use Item', icon: 'combatUseItem' },
-  { mode: 'flee', label: 'Flee', glyph: '↩' },
+  { mode: 'flee', label: 'Flee', icon: 'combatFlee' },
 ];
 
 /**
@@ -119,15 +118,11 @@ export function CombatRail({ bottomInset = 0 }: CombatRailProps) {
                 pressed && styles.chipPressed,
               ]}
             >
-              {a.icon ? (
-                <Image
-                  source={appImages[a.icon]}
-                  style={[styles.icon, selected && styles.iconActive]}
-                  resizeMode="contain"
-                />
-              ) : (
-                <Text style={[styles.glyph, selected && styles.chipLabelActive]}>{a.glyph}</Text>
-              )}
+              <Image
+                source={appImages[a.icon]}
+                style={[styles.icon, selected && styles.iconActive]}
+                resizeMode="contain"
+              />
               <Text
                 style={[styles.chipLabel, selected && styles.chipLabelActive]}
                 numberOfLines={1}
@@ -223,16 +218,6 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     // gold line-art on dark; invert feel when filled
     tintColor: undefined,
-  },
-  glyph: {
-    width: 28,
-    height: 28,
-    marginBottom: 4,
-    color: theme.colors.accent,
-    fontSize: 22,
-    lineHeight: 28,
-    textAlign: 'center',
-    fontWeight: '700',
   },
   iconActive: {
     // pressed: accent fill + dark glyph feel via opacity on gold art

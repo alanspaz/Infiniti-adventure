@@ -44,6 +44,7 @@ export const appImages = {
   combatDodge: require('../assets/icons/dodge.png') as ImageSourcePropType,
   combatCast: require('../assets/icons/cast.png') as ImageSourcePropType,
   combatUseItem: require('../assets/icons/use-item.png') as ImageSourcePropType,
+  combatFlee: require('../assets/icons/flee.png') as ImageSourcePropType,
 } as const;
 
 const PANEL_ICONS: Record<string, ImageSourcePropType> = {

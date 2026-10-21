@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,6 +17,7 @@ import {
   type PlaystylePack,
 } from '../../engine';
 import { theme } from '../theme';
+import { readHostValue, resolveSubmittedName } from './identityName';
 
 type Props = {
   packId: string;
@@ -29,7 +31,14 @@ export function IdentityScreen({ packId, onBack, onCreated }: Props) {
     [packId],
   );
 
-  const [name, setName] = useState('');
+  const [name, setNameState] = useState('');
+  // QA-03: latest name text + the input node, so submit never reads a stale value.
+  const nameRef = useRef('');
+  const nameInputRef = useRef<TextInput>(null);
+  const setName = useCallback((text: string) => {
+    nameRef.current = text;
+    setNameState(text);
+  }, []);
   const [description, setDescription] = useState('');
   const [className, setClassName] = useState(pack.classes[0]?.name ?? '');
   const [customClass, setCustomClass] = useState(false);
@@ -57,8 +66,13 @@ export function IdentityScreen({ packId, onBack, onCreated }: Props) {
       setError(null);
       const age = parseAge();
       const resolvedClass = className.trim();
+      const submittedName = resolveSubmittedName({
+        domValue: Platform.OS === 'web' ? readHostValue(nameInputRef.current) : undefined,
+        latestTyped: nameRef.current,
+        stateValue: name,
+      });
       const campaign = createCampaignFromIdentity({
-        name,
+        name: submittedName,
         description,
         className: resolvedClass,
         age,
@@ -101,6 +115,7 @@ export function IdentityScreen({ packId, onBack, onCreated }: Props) {
           </Text>
         </View>
         <TextInput
+          ref={nameInputRef}
           value={name}
           onChangeText={setName}
           placeholder="What are you called?"
