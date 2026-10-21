@@ -173,8 +173,8 @@ describe('scene adventure loop', () => {
       rng: createSeededRng(5),
     });
     assert.equal(where.campaign.session.locationId, 'interior.kettle-cellar');
-    assert.match(where.prose, /You are at Inn Cellar/i);
-    assert.doesNotMatch(where.prose, /You are at Common Room/i);
+    assert.match(where.prose, /You are at the Inn Cellar/i);
+    assert.doesNotMatch(where.prose, /You are at the Common Room/i);
 
     const refuse = await resolveSceneBeat({
       campaign: camp,

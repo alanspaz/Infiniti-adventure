@@ -72,7 +72,9 @@ describe('P-INT-04 buy', () => {
     assert.equal(result.ok, true);
     const s = st(c1);
     assert.equal(s.inventory.gold, 5);
-    assert.equal(qty(s.inventory.items, 'shortsword'), 1);
+    // QA-01: stacks onto the (unequipped) starter shortsword — one row, ×2.
+    assert.equal(s.inventory.items.filter((i) => i.name === 'Shortsword').length, 1);
+    assert.equal(qty(s.inventory.items, 'starter-shortsword'), 2);
     assert.equal(merchantState(s, SMITH).gold, 90);
     assert.equal(qty(merchantState(s, SMITH).stock, 'shortsword'), 0);
     assert.equal(s.storyBeats.at(-1)?.playerLine, 'Buy Shortsword');

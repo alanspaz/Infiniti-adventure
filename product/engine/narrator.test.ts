@@ -180,7 +180,7 @@ describe('narrator provider', () => {
         },
       },
     });
-    assert.match(arrive.prose, /arrive at Inn Cellar/i);
+    assert.match(arrive.prose, /arrive at the Inn Cellar/i);
     assert.doesNotMatch(arrive.prose, /go to the cellar/i);
 
     const refuse = await provider.narrateScene({

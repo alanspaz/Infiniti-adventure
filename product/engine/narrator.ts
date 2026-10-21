@@ -1,3 +1,4 @@
+import { placeRef } from './map';
 import { tryLoadPlaystylePack } from './pack';
 
 /** Matches settings `ProviderKind` without importing React settings. */
@@ -270,6 +271,20 @@ function isLocationQuestion(action: string | undefined): boolean {
   return LOCATION_QUESTION_RE.test(text);
 }
 
+/** QA-01: endings rotated after a custom beat (empty = let the beat stand alone). */
+const FILLER_ENDINGS = [
+  '',
+  'The moment settles, and the next choice is yours.',
+  'Nothing rushes you; the scene waits on your next move.',
+  'Small things shift in answer — enough to notice, not enough to be sure.',
+  '',
+];
+
+function pickFillerEnding(packTail: string, seedKey: string): string {
+  const pool = [packTail, ...FILLER_ENDINGS];
+  return pool[hashSeed(`tail|${seedKey}`) % pool.length]!;
+}
+
 /** Build Map-truth orientation prose (same facts as Map panel). */
 function proseForLocationHint(hint: NarratorLocationHint | null | undefined): string {
   if (!hint?.name?.trim()) {
@@ -289,9 +304,9 @@ function proseForLocationHint(hint: NarratorLocationHint | null | undefined): st
           })
           .join('; ')}.`;
   if (desc) {
-    return `You are at ${name}. ${desc} ${nearbyBit}`;
+    return `You are at ${placeRef(name)}. ${desc} ${nearbyBit}`;
   }
-  return `You are at ${name}. ${nearbyBit}`;
+  return `You are at ${placeRef(name)}. ${nearbyBit}`;
 }
 
 /** TRAVEL-01: arrival at a nearby exit destination. */
@@ -310,9 +325,9 @@ function proseForArrival(place: NarratorLocationHint): string {
           })
           .join('; ')}.`;
   if (desc) {
-    return `You arrive at ${name}. ${desc} ${nearbyBit}`;
+    return `You arrive at ${placeRef(name)}. ${desc} ${nearbyBit}`;
   }
-  return `You arrive at ${name}. ${nearbyBit}`;
+  return `You arrive at ${placeRef(name)}. ${nearbyBit}`;
 }
 
 /** TRAVEL-01: go/walk/head to a place that is not a nearby exit. */
@@ -494,6 +509,8 @@ function partyClause(
     if (beat === 'opening' && stubs?.openingBeat) {
       return null;
     }
+    // QA-01: don't tack "you walk alone" onto every custom beat.
+    if (beat === 'custom') return null;
     return stubs?.aloneClause?.trim() || null;
   }
   if (names.length === 1) {
@@ -575,13 +592,17 @@ function resolveStubProse(request: NarratorSceneRequest): {
       body = proseForLocationHint(request.locationHint);
       source = 'canned';
     } else {
-      const packFallback = stubs?.customBeatFallback?.trim() || null;
+      const packTail = stubs?.customBeatFallback?.trim() || null;
       const flavored = flavorBodyForAction(request.playerAction, null);
+      // QA-01: vary the filler ending (pack line is one of several; sometimes none).
+      const packFallback = packTail
+        ? pickFillerEnding(packTail, `${request.playerAction ?? ''}|${request.turn ?? 0}|${request.locationId ?? ''}`)
+        : null;
       if (packFallback) {
         const prefix = stubs?.customBeatPrefix?.trim();
         body = prefix
-          ? `${prefix} ${flavored} ${packFallback}`
-          : `${flavored} ${packFallback}`;
+          ? `${prefix} ${flavored}${packFallback ? ` ${packFallback}` : ''}`
+          : `${flavored}${packFallback ? ` ${packFallback}` : ''}`;
         source = 'pack-template';
       } else {
         body = flavored || FALLBACK_CUSTOM;

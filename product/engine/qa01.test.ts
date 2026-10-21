@@ -337,3 +337,110 @@ describe('QA-01 P1-9 typed item / progression commands use the real rules', () =
     assert.match(route(c, 'drink the elixir of life')!.message, /don't have/);
   });
 });
+
+// ── nice-to-haves ──────────────────────────────────────────────────────────
+import {
+  applyItemActionWithTurn,
+  applyOpenShop,
+  createCampaign,
+  createCharacter,
+  MERCHANT_RESTOCK_TURNS,
+  placeRef,
+  applyTrade,
+  MAX_INPUT_CHARS,
+  clampPlayerInput,
+} from './index';
+
+function shopper(gold = 30): CampaignSave {
+  let c = createCampaign({ id: 'shopper', party: [createCharacter({ id: 'pc', name: 'Tess' })], world: { quests: [] }, session: { locationId: 'interior.kettle-common' } });
+  c = applyCampaignPatch(c, starterKitPatch(st(c))!);
+  return applyCampaignPatch(c, { grantGold: gold });
+}
+
+describe('QA-01 nice-to-haves', () => {
+  it('shop closes when you leave and does not reopen on return; closes when a fight starts', () => {
+    let c = applyOpenShop(shopper(), 'trade', 1).campaign;
+    assert.equal(st(c).shop.activeMerchantId, 'merchant.kettle');
+    c = applyCampaignPatch(c, { locationId: 'place.copper-kettle' });
+    c = applyCampaignPatch(c, { locationId: 'interior.kettle-common' });
+    assert.equal(st(c).shop.activeMerchantId, null);
+    c = applyOpenShop(c, 'trade', 1).campaign;
+    c = route(c, 'attack Hollis')!.campaign;
+    assert.equal(st(c).combat.inCombat, true);
+    assert.equal(st(c).shop.activeMerchantId, null);
+  });
+
+  it('typed buy / sell trade one unit with the merchant here', () => {
+    const c = shopper(30);
+    const buy = route(c, 'buy rations')!;
+    assert.equal(buy.route, 'trade');
+    assert.equal(buy.ok, true);
+    assert.ok(st(buy.campaign).inventory.items.some((i) => /ration/i.test(i.name)));
+    assert.ok(st(buy.campaign).inventory.gold < 30);
+    assert.equal(st(buy.campaign).shop.activeMerchantId, 'merchant.kettle');
+    const sell = route(buy.campaign, 'sell my torch')!;
+    assert.equal(sell.ok, true);
+    assert.equal(st(sell.campaign).inventory.items.some((i) => i.id === 'starter-torch'), false);
+    assert.equal(route(c, 'buy a dragon')!.ok, false);
+    const away = route(applyCampaignPatch(c, { locationId: 'locale.ashen-fields' }), 'buy rations')!;
+    assert.equal(away.ok, false);
+    assert.equal(st(away.campaign).inventory.gold, 30);
+  });
+
+  it('bought potions stack with the starter potions (one row)', () => {
+    const c = shopper(30);
+    const r = applyTrade(c, { kind: 'buy', merchantId: 'merchant.kettle', itemId: 'healing-potion' }, 1);
+    assert.equal(r.result.ok, true);
+    const rows = st(r.campaign).inventory.items.filter((i) => i.name === 'Healing potion');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]!.qty, 3);
+  });
+
+  it('a drained merchant purse restocks slowly toward its starting gold', () => {
+    let c = shopper(0);
+    // Sell to Hollis to drain a little of his 40g purse.
+    c = applyTrade(c, { kind: 'sell', merchantId: 'merchant.kettle', itemId: 'starter-shortsword' }, 1).campaign;
+    const after = merchantState(st(c), 'merchant.kettle').gold;
+    assert.ok(after < 40);
+    c = applyCampaignPatch(c, { session: { turn: c.session.turn + MERCHANT_RESTOCK_TURNS * 2 } });
+    assert.equal(merchantState(st(c), 'merchant.kettle').gold, Math.min(40, after + 2));
+    c = applyCampaignPatch(c, { session: { turn: c.session.turn + MERCHANT_RESTOCK_TURNS * 100 } });
+    assert.equal(merchantState(st(c), 'merchant.kettle').gold, 40);
+  });
+
+  it('equip / use mid-fight costs the round (foe acts); inspect is free', () => {
+    const c = inFight();
+    const round0 = st(c).combat.round;
+    const r = applyItemActionWithTurn(c, { kind: 'equip', itemId: 'starter-leather-armor' }, { rng: createSeededRng(2), now: 1 });
+    assert.equal(r.result.ok, true);
+    assert.ok(r.turn);
+    assert.equal(st(r.campaign).combat.round, round0 + 1);
+    assert.match(st(r.campaign).storyBeats.at(-1)!.checkLine!, /vs AC/);
+    const typed = route(c, 'unequip leather armor')!;
+    assert.equal(st(typed.campaign).combat.round, round0 + 1);
+    const look = applyItemActionWithTurn(c, { kind: 'inspect', itemId: 'starter-torch' }, { now: 1 });
+    assert.equal(look.turn, null);
+  });
+
+  it('narrator: no "Tess stands ready" for the PC, a/an, "the Common Room"', async () => {
+    const c = hurtLevel2();
+    const beat = await resolveSceneBeat({ campaign: c, playerAction: 'sing a song', beat: 'custom', map, rng: createSeededRng(1) });
+    assert.doesNotMatch(beat.prose, /Tess stands ready/);
+    const where = await resolveSceneBeat({ campaign: c, playerAction: 'where am I', beat: 'custom', map, rng: createSeededRng(1) });
+    assert.match(where.prose, /You are at the Common Room/);
+    assert.equal(placeRef('Emberford'), 'Emberford');
+    assert.equal(placeRef('The Copper Kettle'), 'The Copper Kettle');
+    let w = applyCampaignPatch(kitted(hurtLevel2(3)), { locationId: 'locale.ashen-fields' });
+    let intro = '';
+    for (let i = 0; i < 12 && !/ash wolf/i.test(intro); i++) {
+      w = applyCampaignPatch(w, { session: { turn: w.session.turn + 1 } });
+      const r = route(w, 'look for trouble')!;
+      intro = st(r.campaign).storyBeats.at(-1)!.prose;
+    }
+    assert.match(intro, /^An ash wolf/);
+  });
+
+  it('typed input is capped at MAX_INPUT_CHARS', () => {
+    assert.equal(clampPlayerInput('a'.repeat(5000)).length, MAX_INPUT_CHARS);
+  });
+});

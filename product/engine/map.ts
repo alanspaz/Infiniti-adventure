@@ -144,7 +144,15 @@ function buildWhereAmILine(
     exits.length === 0
       ? 'No obvious exits.'
       : `Exits: ${exits.map((e) => e.label).join('; ')}.`;
-  return `You are at ${name} (${path}). ${exitBit}`;
+  return `You are at ${placeRef(name)} (${path}). ${exitBit}`;
+}
+
+/** QA-01: generic room names read with "the" ("the Common Room"); proper names don't. */
+const GENERIC_PLACE_RE = /\b(?:room|cellar|floor|counter|yard|hall|kitchen|stable|loft|attic|square|gate|bridge|road|threshold)$/i;
+export function placeRef(name: string): string {
+  const n = name.trim();
+  if (/^the\s/i.test(n) || !GENERIC_PLACE_RE.test(n)) return n;
+  return `the ${n}`;
 }
 
 /**

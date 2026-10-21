@@ -27,6 +27,9 @@ import {
   itemNarrationPatch,
   itemTraits,
   resolveItemAction,
+  applyItemAction,
+  type ItemActionRequest,
+  type ItemActionResult,
 } from './items';
 import { xpForLevel } from './progression';
 import { createSeededRng, type Rng } from './rng';
@@ -195,7 +198,8 @@ function lowerName(foe: FoeState): string {
  */
 export function resolveCombatTurn(
   state: CampaignState,
-  kind: CombatActionKind,
+  /** 'pass' (internal): the player spent the round on something else — the foe acts. */
+  kind: CombatActionKind | 'pass',
   rng: Rng,
 ): CombatTurnResult {
   const combat = state.combat;
@@ -270,6 +274,8 @@ export function resolveCombatTurn(
       prose.push(used.narration ?? `You use the ${heal.name.toLowerCase()}.`);
       break;
     }
+    case 'pass':
+      break;
     case 'flee': {
       const dex = abilityModifier(pcAbilities(state).dexterity);
       const face = rollDie(20, rng);
@@ -380,7 +386,7 @@ export function resolveCombatTurn(
         foeMaxHp: foe.maxHp,
         stance,
         tempAcBonus: stance === 'defend' ? DEFEND_AC_BONUS : 0,
-        mode: kind === 'flee' ? 'idle' : kind,
+        mode: kind === 'flee' || kind === 'pass' ? 'idle' : kind,
         lastAction: lines[lines.length - 1] ?? kind,
         round,
       },
@@ -557,7 +563,8 @@ export function applyCombatIntent(
   }
   const start = enterCombatPatch(state.combat, 'Combat begins', loc, rng());
   const foe = start.combat!.foe!;
-  const intro = `A ${foe.name.toLowerCase()} squares up to you — ${foe.hp} HP, AC ${foe.ac}.`;
+  const lower = foe.name.toLowerCase();
+  const intro = `${/^[aeiou]/.test(lower) ? 'An' : 'A'} ${lower} squares up to you — ${foe.hp} HP, AC ${foe.ac}.`;
   let next = applyCampaignPatch(campaign, start);
   if (seeking) {
     const narration = `${intro} Steel yourself: Attack, Cast, Defend, Dodge, or Use Item.`;
@@ -584,4 +591,34 @@ export function applyCombatIntent(
     };
   }
   return turn;
+}
+
+/**
+ * QA-01: item actions that change your kit (use / equip / drop) cost the
+ * round mid-fight — the foe gets its turn. Inspect / move stay free, and
+ * outside combat this is plain applyItemAction. Rejections never spend a turn.
+ */
+export function applyItemActionWithTurn(
+  campaign: CampaignSave,
+  req: ItemActionRequest,
+  opts: { rng?: Rng; now?: number; playerLine?: string | null } = {},
+): { campaign: CampaignSave; result: ItemActionResult; turn: CombatTurnResult | null } {
+  const now = opts.now ?? Date.now();
+  const state = campaignToState(campaign);
+  if (!state.combat.inCombat || req.kind === 'inspect' || req.kind === 'move') {
+    return { ...applyItemAction(campaign, req, now), turn: null };
+  }
+  const item = resolveItemAction(state, req);
+  if (!item.ok || !item.patch) return { campaign, result: item, turn: null };
+  let patch: CampaignStatePatch = item.patch;
+  if (patch.combat) patch = { ...patch, combat: { ...state.combat, ...patch.combat } };
+  const mid = applyCampaignPatch(campaign, patch);
+  const rng = opts.rng ?? combatRngFor(campaign);
+  const turn = resolveCombatTurn(campaignToState(mid), 'pass', rng);
+  const narration = [item.narration ?? item.message, turn.narration].filter(Boolean).join(' ');
+  return {
+    campaign: appendBeat(mid, turn.patch ?? {}, narration, opts.playerLine ?? item.playerLine, turn.rollLine, now),
+    result: { ...item, message: `${item.message} ${turn.message}`.trim() },
+    turn,
+  };
 }

@@ -26,8 +26,8 @@ import {
   type ItemActionRequest,
 } from './items';
 import { progressionSummary, resolveProgressionAction, type ProgressionRequest } from './progression';
-import { applyCombatIntent, playerArmorClass, type CombatOutcome } from './combat';
-import { applyOpenShop, detectTradeIntent, merchantState } from './shop';
+import { applyCombatIntent, applyItemActionWithTurn, playerArmorClass, type CombatOutcome } from './combat';
+import { applyOpenShop, detectTradeIntent, merchantForLocation, merchantState, openShopAt, resolveTrade } from './shop';
 
 /** QA-01 nice-to-have: typed input is capped (composer maxLength matches). */
 export const MAX_INPUT_CHARS = 500;
@@ -118,11 +118,15 @@ function tokens(s: string): string[] {
 
 /** Best inventory match for a typed object phrase (null if none fits). */
 export function findInventoryItem(state: CampaignState, phrase: string): InventoryItem | null {
+  return findItemIn(state.inventory.items, phrase);
+}
+
+export function findItemIn(items: InventoryItem[], phrase: string): InventoryItem | null {
   const want = tokens(phrase);
   if (want.length === 0) return null;
   let best: InventoryItem | null = null;
   let bestScore = 0;
-  for (const it of state.inventory.items) {
+  for (const it of items) {
     const have = tokens(it.name);
     const hits = want.filter((w) => have.includes(w)).length;
     if (hits === 0) continue;
@@ -153,7 +157,31 @@ const TAKE_RE = /^(?:i\s+)?(?:take|grab|pick\s+up|loot|pocket|steal|claim|snatch
 const TAKE_IDIOM_RE =
   /^(?:a\s+|the\s+|my\s+|some\s+)?(?:(?:long|short|quick|deep)\s+)?(?:look|looks|seat|moment|breath|breather|rest|nap|break|walk|stroll|chance|risk|turn|step|stand|note|notes|stock|aim|cover|heart|pace|drink|bite|sip|quest|job|work|it|on|in|off|over|up|time|lead|charge|watch|guard|position|place|stairs|road|path|exit|door|way|offer|deal|hint|advice|hand|knee)\b/i;
 
+const BUY_RE = /^(?:i\s+)?(?:buy|purchase)\s+(.+?)(?:\s+from\s+[\w\s'’]+)?[.!?]*$/i;
+const SELL_RE = /^(?:i\s+)?sell\s+(.+?)(?:\s+to\s+[\w\s'’]+)?[.!?]*$/i;
+
 // ── handlers ───────────────────────────────────────────────────────────────
+
+/** Nice-to-have: "buy rations" / "sell my torch" trade one unit right away (shop opens too). */
+function typedBuySell(campaign: CampaignSave, text: string, kind: 'buy' | 'sell', phrase: string, now: number): RoutedInput | null {
+  const state = campaignToState(campaign);
+  const def = merchantForLocation(state.locationId);
+  if (!def) return null; // generic trade path answers "no one here is selling"
+  const open = openShopAt(state);
+  const openPatch = open.patch ?? {};
+  const item = kind === 'buy' ? findItemIn(merchantState(state, def.id).stock, phrase) : findInventoryItem(state, phrase);
+  if (!item) {
+    const msg =
+      kind === 'buy'
+        ? `${def.keeper} has no "${phrase}" for sale. ${def.greeting}`
+        : `You don't have any "${phrase}" to sell.`;
+    return { campaign: beat(campaign, openPatch, msg, text, now), route: 'trade', ok: false, message: msg };
+  }
+  const result = resolveTrade(state, { kind, merchantId: def.id, itemId: item.id });
+  const patch = result.ok && result.patch ? { ...result.patch, ...openPatch } : openPatch;
+  const prose = result.ok ? (result.narration ?? result.message) : result.message;
+  return { campaign: beat(campaign, patch, prose, text, now), route: 'trade', ok: result.ok, message: result.message };
+}
 
 export function inventoryLine(state: CampaignState): string {
   const items = state.inventory.items;
@@ -191,7 +219,7 @@ function restHere(campaign: CampaignSave, text: string, long: boolean, now: numb
     const msg = `You pay Hollis ${LONG_REST_COST} gold and sleep the night through upstairs. You wake rested: ${max}/${max} HP.`;
     const patch: CampaignStatePatch = {
       spendGold: LONG_REST_COST,
-      merchants: { [INN_MERCHANT_ID]: { gold: purse.gold + LONG_REST_COST, stock: purse.stock } },
+      merchants: { [INN_MERCHANT_ID]: { ...purse, gold: purse.gold + LONG_REST_COST } },
       combat: { hp: max },
       flags: { [SHORT_RESTS_FLAG]: 0 },
     };
@@ -217,6 +245,7 @@ function runItem(
   text: string,
   cmd: { verb: ItemVerb; object: string },
   now: number,
+  rng?: () => number,
 ): RoutedInput | null {
   const state = campaignToState(campaign);
   const item = findInventoryItem(state, cmd.object);
@@ -239,6 +268,14 @@ function runItem(
     req = { kind: 'equip', itemId: item.id };
   } else {
     req = { kind: cmd.verb.kind, itemId: item.id };
+  }
+  if (state.combat.inCombat && req.kind !== 'inspect') {
+    // Nice-to-have: changing kit mid-fight costs the round (foe acts).
+    const r = applyItemActionWithTurn(campaign, req, { now, playerLine: text, ...(rng ? { rng } : {}) });
+    if (!r.result.ok) {
+      return { campaign: beat(campaign, {}, r.result.message, text, now), route: 'item', ok: false, message: r.result.message };
+    }
+    return { campaign: r.campaign, route: 'item', ok: true, message: r.result.message, ...(r.turn ? { outcome: r.turn.outcome } : {}) };
   }
   const result = resolveItemAction(state, req);
   const prose = result.narration ?? result.message;
@@ -298,8 +335,8 @@ export function routePlayerInput(
       return { campaign: beat(campaign, {}, msg, text, now), route: 'progression', ok: false, message: msg };
     }
     const cmd = parseItemCommand(text);
-    if (cmd && cmd.verb.kind !== 'use') {
-      const r = runItem(campaign, text, cmd, now);
+    if (cmd) {
+      const r = runItem(campaign, text, cmd, now, opts.rng);
       if (r) return r;
     }
     const fight = applyCombatIntent(campaign, text, { now, ...(opts.rng ? { rng: opts.rng } : {}) });
@@ -350,6 +387,12 @@ export function routePlayerInput(
 
   const fight = applyCombatIntent(campaign, text, { now, ...(opts.rng ? { rng: opts.rng } : {}) });
   if (fight) return { campaign: fight.campaign, route: 'combat', ok: fight.result.ok, message: fight.result.message, outcome: fight.result.outcome };
+
+  const typedTrade = text.match(BUY_RE) ?? text.match(SELL_RE);
+  if (typedTrade?.[1] && detectTravelIntent(text, opts.map, loc).kind === 'none') {
+    const r = typedBuySell(campaign, text, /^(?:i\s+)?sell\b/i.test(text) ? 'sell' : 'buy', typedTrade[1], now);
+    if (r) return r;
+  }
 
   if (detectTradeIntent(text) && detectTravelIntent(text, opts.map, loc).kind === 'none') {
     const r = applyOpenShop(campaign, text, now);

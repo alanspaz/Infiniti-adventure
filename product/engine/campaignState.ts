@@ -166,6 +166,8 @@ export function questXpFor(id: string): number {
 export type MerchantState = {
   gold: number;
   stock: InventoryItem[];
+  /** QA-01: session.turn when gold was last written (purse restocks from here). */
+  asOfTurn?: number;
 };
 
 /** P-INT-04: which merchant's shop is open (null = closed). */
@@ -184,6 +186,9 @@ function normalizeMerchants(
     if (!m || typeof m !== 'object') continue;
     out[String(id)] = {
       gold: Math.max(0, Math.floor(Number(m.gold) || 0)),
+      ...(Number.isFinite(Number(m.asOfTurn)) && m.asOfTurn !== undefined
+        ? { asOfTurn: Math.max(0, Math.floor(Number(m.asOfTurn))) }
+        : {}),
       stock: Array.isArray(m.stock)
         ? m.stock
             .filter((it) => it && typeof it === 'object')
@@ -809,6 +814,14 @@ export function applyCampaignPatch(
 
   const party = patch.party ? [...patch.party] : [...campaign.party];
   nextWorld.combat = seedCombatFromParty(nextWorld.combat, party);
+  // QA-01: the shop closes for good when you leave its room or a fight starts
+  // (so it never auto-reopens when you walk back in).
+  if (
+    nextWorld.shop.activeMerchantId &&
+    (nextWorld.shop.atLocationId !== (session.locationId ?? null) || nextWorld.combat.inCombat)
+  ) {
+    nextWorld.shop = { activeMerchantId: null, atLocationId: null };
+  }
 
   const now = new Date().toISOString();
   return {

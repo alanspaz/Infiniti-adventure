@@ -211,10 +211,24 @@ export function merchantForLocation(
 }
 
 /** Persisted merchant state, or the table seed if never traded with. */
+/** QA-01: an emptied purse slowly refills toward its starting gold. */
+export const MERCHANT_RESTOCK_GOLD = 1;
+export const MERCHANT_RESTOCK_TURNS = 4;
+
 export function merchantState(state: CampaignState, merchantId: string): MerchantState {
   const saved = state.merchants[merchantId];
-  if (saved) return saved;
   const def = getMerchantDef(merchantId);
+  if (saved) {
+    const turn = state.session.turn;
+    if (!def || saved.gold >= def.startingGold || saved.asOfTurn === undefined) {
+      return { ...saved, asOfTurn: saved.asOfTurn ?? turn };
+    }
+    const steps = Math.max(0, Math.floor((turn - saved.asOfTurn) / MERCHANT_RESTOCK_TURNS));
+    const gold = Math.min(def.startingGold, saved.gold + steps * MERCHANT_RESTOCK_GOLD);
+    // Keep the remainder of a partial step so restock never stalls.
+    const asOfTurn = gold >= def.startingGold ? turn : saved.asOfTurn + steps * MERCHANT_RESTOCK_TURNS;
+    return { ...saved, gold, asOfTurn };
+  }
   if (!def) return { gold: 0, stock: [] };
   return {
     gold: def.startingGold,
@@ -295,9 +309,19 @@ function takeOne(items: InventoryItem[], id: string): InventoryItem[] {
   );
 }
 
+/** QA-01: same thing under a different id (starter vs shop potion) stacks in one row. */
+function sameKind(a: InventoryItem, b: InventoryItem): boolean {
+  return (
+    a.name.trim().toLowerCase() === b.name.trim().toLowerCase() &&
+    (a.kind ?? 'gear') === (b.kind ?? 'gear') &&
+    JSON.stringify(itemTraits(a)) === JSON.stringify(itemTraits(b))
+  );
+}
+
 function giveOne(items: InventoryItem[], item: InventoryItem): InventoryItem[] {
   const { equipped: _e, ...clean } = item;
-  const idx = items.findIndex((i) => i.id === item.id);
+  let idx = items.findIndex((i) => i.id === item.id);
+  if (idx < 0) idx = items.findIndex((i) => !i.equipped && sameKind(i, item));
   if (idx >= 0) {
     return items.map((i, n) => (n === idx ? { ...i, qty: i.qty + 1 } : i));
   }
@@ -326,7 +350,7 @@ export function resolveTrade(state: CampaignState, req: TradeRequest): TradeResu
       patch: {
         inventory: { gold: player.gold - price, items: giveOne(player.items, item) },
         merchants: {
-          [def.id]: { gold: m.gold + price, stock: takeOne(m.stock, item.id) },
+          [def.id]: { gold: m.gold + price, stock: takeOne(m.stock, item.id), asOfTurn: m.asOfTurn ?? state.session.turn },
         },
       },
       narration: `${def.keeper} takes your ${price} gold and hands over the ${item.name.toLowerCase()}.`,
@@ -353,7 +377,7 @@ export function resolveTrade(state: CampaignState, req: TradeRequest): TradeResu
     patch: {
       inventory: { gold: player.gold + price, items: takeOne(player.items, item.id) },
       merchants: {
-        [def.id]: { gold: m.gold - price, stock: giveOne(m.stock, item) },
+        [def.id]: { gold: m.gold - price, stock: giveOne(m.stock, item), asOfTurn: m.asOfTurn ?? state.session.turn },
       },
     },
     narration: `${def.keeper} turns the ${item.name.toLowerCase()} over once, then counts ${price} gold into your palm.`,

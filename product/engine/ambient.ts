@@ -136,6 +136,10 @@ const PLACE_WAIT_ARCS: Record<string, string[]> = {
     'You wait under open sky. Clouds drag shadows across the furrows; a crow lands, then decides against you.',
     'Time thins on the farm track. Dust settles on your boots; a distant mill turns; the road back to Emberford stays clear.',
     'You linger. The scarecrow\'s coat flaps once; soil cools underfoot; the vale\'s watch-stones glint far off.',
+    'Wind runs low over the stubble. Somewhere out in the pale furrows, something small bolts for cover.',
+    'You hold still in the open. A farm dog barks two fields over, then thinks better of it.',
+    'The light shifts on the Ashen Fields; ash-dust ghosts along the track and settles in the ruts.',
+    'You wait. A scarecrow\'s sackcloth head turns in the wind — just the wind, you tell yourself.',
   ],
   'region.embervale': [
     'You take a moment at the edge of Embervale. River light, mill towns, and old watch-stones hold still around you.',

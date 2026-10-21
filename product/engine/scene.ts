@@ -465,7 +465,8 @@ export async function resolveSceneBeat(
         ? 'continue'
         : 'opening');
 
-  const partyNames = input.campaign.party.map((c) => c.name);
+  // QA-01: companions only — the PC (party[0]) is "you", never "Tess stands ready beside you".
+  const partyNames = input.campaign.party.slice(1).map((c) => c.name);
   const locationId =
     input.campaign.session.locationId ?? graph.startNodeId;
 

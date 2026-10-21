@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { loadAppInNode } from './load-app';
 
 async function main() {
   const engine = await import('../engine/index');
@@ -564,18 +565,11 @@ async function main() {
   assert.equal(typeof persistMod.createAppStillProvider, 'function');
   assert.equal(typeof persistMod.loadStillGallery, 'function');
 
-  let appImported = false;
-  try {
-    const App = await import('../App');
-    assert.equal(typeof App.default, 'function');
-    appImported = true;
-  } catch (err) {
-    console.log(
-      'smoke note: App.tsx present with scene loop; Node import skipped (' +
-        (err instanceof Error ? err.message.split('\n')[0] : String(err)) +
-        ')',
-    );
-  }
+  // QA-01: actually load App.tsx (bundled with native modules stubbed) and
+  // execute every module top-level. Any load-time error fails smoke.
+  const appMod = await loadAppInNode(path.resolve(__dirname, '..'));
+  assert.equal(typeof appMod.default, 'function', 'App.tsx default export');
+  const appImported = true;
 
   console.log(
     'smoke ok: engine + identity + narrator + play shell tabs + stills/cache UI + scene loop + persist + sheet/dice UI' +

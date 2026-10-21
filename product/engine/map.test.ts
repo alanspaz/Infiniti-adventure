@@ -56,7 +56,7 @@ describe('whereAmI', () => {
     assert.match(here.path, /Common Room/);
     assert.ok(here.exits.length >= 2);
     assert.ok(here.exits.some((e) => e.toNodeId === 'place.copper-kettle'));
-    assert.match(here.line, /You are at Common Room/);
+    assert.match(here.line, /You are at the Common Room/);
     assert.match(here.line, /Exits:/);
   });
 

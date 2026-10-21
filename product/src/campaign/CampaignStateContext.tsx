@@ -8,7 +8,7 @@ import React, {
 import type { CampaignSave } from '../../engine';
 import {
   applyCampaignPatch,
-  applyItemAction,
+  applyItemActionWithTurn,
   applyOpenShop,
   applyProgressionAction,
   applyTrade,
@@ -113,7 +113,8 @@ export function CampaignStateProvider({
 
   const runItemAction = useCallback(
     (req: ItemActionRequest): ItemActionResult => {
-      const { campaign: next, result } = applyItemAction(campaign, req);
+      // QA-01: use/equip/drop mid-fight costs the round (foe acts); free otherwise.
+      const { campaign: next, result } = applyItemActionWithTurn(campaign, req);
       if (next !== campaign) onCampaignChange(next);
       return result;
     },
