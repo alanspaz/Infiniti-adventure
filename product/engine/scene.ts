@@ -35,10 +35,6 @@ import { withSession, type CampaignSave } from './save';
 import { tickWorldAmbient } from './ambient';
 import {
   applyCampaignPatch,
-  detectCombatEnterFromAction,
-  detectCombatExitFromAction,
-  enterCombatPatch,
-  exitCombatPatch,
 } from './campaignState';
 
 export type SuggestedCheck = {
@@ -597,23 +593,7 @@ export async function resolveSceneBeat(
     campaign = setCampaignLocation(campaign, travel.toNodeId);
   }
 
-  // COMBAT-01: enter/exit from Tale attack / fight-end language.
-  if (action && detectCombatExitFromAction(action)) {
-    campaign = applyCampaignPatch(
-      campaign,
-      exitCombatPatch(campaign.world?.combat, 'Combat ends'),
-    );
-  } else if (action && detectCombatEnterFromAction(action)) {
-    campaign = applyCampaignPatch(
-      campaign,
-      enterCombatPatch(
-        campaign.world?.combat,
-        'Combat begins',
-        campaign.session.locationId ?? null,
-        rng(),
-      ),
-    );
-  }
+  // QA-01 P0-1: the narrator never starts/ends fights (see applyCombatIntent).
 
   if (Object.keys(ambient.flagPatch).length > 0) {
     campaign = {

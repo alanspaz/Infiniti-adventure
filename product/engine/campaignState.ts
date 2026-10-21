@@ -535,8 +535,10 @@ export function seedCombatFromParty(
 ): CombatState {
   const pc = party.length > 0 ? party[0]! : null;
   if (!pc) return combat;
-  const max = deriveStats(pc).maxHitPoints;
-  const maxHp = combat.maxHp ?? max;
+  // QA-01 P0-1: max HP always comes from the character sheet (via progression),
+  // never from a stored combat value. This also repairs saves that a stray
+  // combat entry capped at 10: the stored max is recomputed on load/patch.
+  const maxHp = deriveStats(pc).maxHitPoints;
   const hp = combat.hp ?? maxHp;
   return {
     ...combat,
@@ -890,15 +892,9 @@ export function patchesFromSceneBeat(input: {
     };
   }
 
-  // COMBAT-01/02: Tale attack language enters combat (with a foe); end-words exit.
-  if (detectCombatExitFromAction(action)) {
-    patch.combat = { ...(patch.combat ?? {}), ...exitCombatPatch(undefined).combat };
-  } else if (detectCombatEnterFromAction(action)) {
-    patch.combat = {
-      ...(patch.combat ?? {}),
-      ...enterCombatPatch(undefined, 'Combat begins', input.locationId ?? null).combat,
-    };
-  }
+  // QA-01 P0-1: the narrator stub never starts or ends a fight. Combat entry
+  // goes only through applyCombatIntent (real state, location foe table, and
+  // the not-a-fight idiom list); exit only through the combat loop.
 
   return patch;
 }
@@ -912,8 +908,13 @@ const FIGHT_ENTER_RE =
 const FIGHT_EXIT_RE =
   /\b(?:flee|retreat|end\s+(?:the\s+)?(?:fight|combat)|spare(?:\s+them)?|surrender|combat\s+ends|fight\s+(?:ends|over)|stand\s+down)\b/i;
 
+/** Idioms that use fight words without meaning violence (QA-01 P0-1 / P1-6). */
+export const NOT_A_FIGHT_RE =
+  /\b(?:strike\s+(?:a\s+|up\s+a\s+)?(?:deal|bargain|match|conversation|chord|pose)|hunt\s+(?:for|down|around)\s+(?:clues?|information|answers|work|a\s+room|rumou?rs?|food|herbs)|hunting|fight\s+(?:the\s+|off\s+the\s+)?(?:urge|sleep|tears|cold|yawn|temptation)|(?:the\s+|an?\s+)?attacks?\s+on\s+the\b|shoot\s+the\s+breeze|kick\s+(?:back|off|up\s+my\s+feet)|strike\s+out\b|kick\s+the\s+habit)/i;
+
 export function detectCombatEnterFromAction(action: string): boolean {
-  return FIGHT_ENTER_RE.test(action.trim());
+  const t = action.trim();
+  return FIGHT_ENTER_RE.test(t) && !NOT_A_FIGHT_RE.test(t);
 }
 
 export function detectCombatExitFromAction(action: string): boolean {
@@ -928,14 +929,11 @@ export function enterCombatPatch(
   foeRoll = 0,
 ): CampaignStatePatch {
   const base = normalizeCombat(combat);
-  const maxHp = base.maxHp ?? 10;
-  const hp = base.hp ?? maxHp;
+  // QA-01 P0-1: entry never touches player hp/maxHp (those come from the sheet).
   const foe = base.inCombat && base.foe ? base.foe : spawnFoe(locationId, foeRoll);
   return {
     combat: {
       inCombat: true,
-      hp,
-      maxHp,
       mode: 'idle',
       lastAction: reason,
       tempAcBonus: 0,
@@ -949,15 +947,13 @@ export function enterCombatPatch(
 }
 
 export function exitCombatPatch(
-  combat: CombatState | undefined,
+  _combat: CombatState | undefined,
   reason = 'Combat ends',
 ): CampaignStatePatch {
-  const base = normalizeCombat(combat);
   return {
     combat: {
       inCombat: false,
-      hp: base.hp,
-      maxHp: base.maxHp,
+      // QA-01 P1-3: exit leaves player hp alone (no reseed-to-full on null).
       mode: 'idle',
       lastAction: reason,
       tempAcBonus: 0,

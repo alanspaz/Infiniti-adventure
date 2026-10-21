@@ -111,27 +111,27 @@ describe('COMBAT-02 attack rolls (seeded dice)', () => {
 
 describe('COMBAT-02 enemy turn + stances', () => {
   it('foe hits the player for its damage dice', () => {
-    const c = fightCampaign({ hp: 10 });
+    const c = fightCampaign({ hp: 8 });
     const r = applyCombatTurn(c, 'attack', { rng: dice([2, 20], [15, 20], [4, 6]) });
     // Ash wolf 1d6+1 → 5
-    assert.equal(st(r.campaign).combat.hp, 5);
+    assert.equal(st(r.campaign).combat.hp, 3);
     assert.match(r.result.rollLine!, /Ash wolf 🎲 15\+3=18 .* hit, 5 dmg/);
   });
 
   it('defend adds +2 AC for the foe turn; dodge imposes disadvantage', () => {
-    const c = fightCampaign({ hp: 10 });
+    const c = fightCampaign({ hp: 8 });
     const base = playerArmorClass(st(c), 'none');
     // Foe rolls exactly base-3 → total = base → hit normally, miss when defending.
     const face = base - 3;
     const def = applyCombatTurn(c, 'defend', { rng: dice([face, 20]) });
     assert.match(def.result.rollLine!, new RegExp(`vs AC ${base + 2} — miss`));
-    assert.equal(st(def.campaign).combat.hp, 10);
+    assert.equal(st(def.campaign).combat.hp, 8);
     assert.equal(st(def.campaign).combat.tempAcBonus, 2);
     assert.equal(st(def.campaign).combat.stance, 'defend');
 
     const dodge = applyCombatTurn(c, 'dodge', { rng: dice([18, 20], [3, 20]) });
     assert.match(dodge.result.rollLine!, /\(18,3\)→3\+3=6/);
-    assert.equal(st(dodge.campaign).combat.hp, 10);
+    assert.equal(st(dodge.campaign).combat.hp, 8);
     // Stance clears on the next non-stance action.
     const after = applyCombatTurn(def.campaign, 'attack', { rng: dice([2, 20], [2, 20]) });
     assert.equal(st(after.campaign).combat.stance, 'none');
@@ -213,7 +213,7 @@ describe('COMBAT-02 defeat recovery', () => {
 
 describe('COMBAT-02 flee', () => {
   it('escape on DEX check ≥ 10; caught → foe acts', () => {
-    const c = fightCampaign({ hp: 10 });
+    const c = fightCampaign({ hp: 8 });
     const ok = applyCombatTurn(c, 'flee', { rng: dice([12, 20]) });
     assert.equal(ok.result.outcome, 'fled');
     assert.equal(st(ok.campaign).combat.inCombat, false);
@@ -264,7 +264,7 @@ describe('COMBAT-02 Tale intents', () => {
 
 describe('COMBAT-02 save/load mid-fight', () => {
   it('foe, HP, stance, round survive serialize → parse and the fight continues', () => {
-    let c = fightCampaign({ hp: 10 });
+    let c = fightCampaign({ hp: 8 });
     c = applyCombatTurn(c, 'defend', { rng: dice([2, 20]) }).campaign;
     c = applyCombatTurn(c, 'attack', { rng: dice([15, 20], [2, 20]) }).campaign;
     c = applyCombatTurn(c, 'defend', { rng: dice([2, 20]) }).campaign;

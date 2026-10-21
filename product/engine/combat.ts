@@ -12,6 +12,7 @@ import {
   campaignToState,
   detectCombatEnterFromAction,
   detectCombatExitFromAction,
+  NOT_A_FIGHT_RE,
   enterCombatPatch,
   exitCombatPatch,
   type CampaignState,
@@ -469,9 +470,6 @@ export function applyCombatTurn(
   };
 }
 
-/** Idioms that use fight words without meaning violence. */
-const NOT_A_FIGHT_RE =
-  /\b(?:strike\s+(?:a\s+|up\s+a\s+)?(?:deal|bargain|match|conversation|chord|pose)|hunt\s+(?:for|down)\s+(?:clues?|information|answers|work|a\s+room)|fight\s+(?:the\s+)?(?:urge|sleep|tears|cold))\b/i;
 
 const SEEK_RE = /\b(?:look\s+for\s+(?:trouble|a\s+fight)|hunt|ambush|fight)\b/i;
 

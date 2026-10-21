@@ -229,7 +229,7 @@ describe('scene adventure loop', () => {
     assert.match(top.prose, /already at|open edge|nowhere higher/i);
   });
 
-  it('COMBAT-01: attack language enters combat on campaign', async () => {
+  it('QA-01 P0-1: narrator never enters combat (applyCombatIntent owns fights)', async () => {
     const camp = createCampaign({
       id: 'scene-combat-enter',
       party: [createCharacter({ id: 'pc', name: 'Rook' })],
@@ -241,7 +241,7 @@ describe('scene adventure loop', () => {
       forceCheck: null,
       rng: createSeededRng(7),
     });
-    assert.equal(beat.campaign.world?.combat?.inCombat, true);
+    assert.notEqual(beat.campaign.world?.combat?.inCombat, true);
   });
 
   it('showMe returns stub still placeholder offline', async () => {

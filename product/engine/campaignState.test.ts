@@ -274,13 +274,11 @@ describe('campaignToState / story stubs', () => {
     assert.equal(state.combat.stance, 'none');
   });
 
-  it('patchesFromSceneBeat enters combat on attack language', () => {
-    const p = patchesFromSceneBeat({ playerAction: 'I attack the rat' });
-    assert.equal(p.combat?.inCombat, true);
-    assert.ok((p.combat?.foeHp ?? 0) > 0);
-
-    const end = patchesFromSceneBeat({ playerAction: 'I flee the fight' });
-    assert.equal(end.combat?.inCombat, false);
+  it('QA-01 P0-1: patchesFromSceneBeat never starts/ends a fight (combat goes through applyCombatIntent)', () => {
+    for (const a of ['I attack the rat', 'I flee the fight', 'hunt for clues', 'strike a deal with Hollis', 'fight the urge to sleep']) {
+      const p = patchesFromSceneBeat({ playerAction: a, locationId: 'locale.ashen-fields' });
+      assert.equal(p.combat, undefined, a);
+    }
   });
 
   it('empty party remains valid', () => {
