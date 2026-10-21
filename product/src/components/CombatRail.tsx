@@ -1,20 +1,28 @@
 import React, { useMemo } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { armorClassWithGear, deriveStats, type CombatMode } from '../../engine';
+import {
+  armorClassWithGear,
+  deriveStats,
+  isSpellcasterClass,
+  type CombatActionKind,
+} from '../../engine';
 import { useCampaignState } from '../campaign';
 import { appImages } from '../images';
 import { theme } from '../theme';
 
-const ACTIONS: {
-  mode: Exclude<CombatMode, 'idle'>;
+/** Rail actions. Flee (QA-02) has no art yet — a gold glyph stands in. */
+export const COMBAT_RAIL_ACTIONS: {
+  mode: CombatActionKind;
   label: string;
-  icon: keyof typeof appImages;
+  icon?: keyof typeof appImages;
+  glyph?: string;
 }[] = [
   { mode: 'attack', label: 'Attack', icon: 'combatAttack' },
   { mode: 'defend', label: 'Defend', icon: 'combatDefend' },
   { mode: 'dodge', label: 'Dodge', icon: 'combatDodge' },
   { mode: 'cast', label: 'Cast', icon: 'combatCast' },
   { mode: 'use-item', label: 'Use Item', icon: 'combatUseItem' },
+  { mode: 'flee', label: 'Flee', glyph: '↩' },
 ];
 
 /**
@@ -46,6 +54,8 @@ export function CombatRail({ bottomInset = 0 }: CombatRailProps) {
   const tempAc = state.combat.tempAcBonus ?? 0;
   const ac = baseAc == null ? null : baseAc + tempAc;
   const active = state.combat.mode;
+  // QA-02: non-casters keep Cast, relabelled so the weak spark isn't a surprise.
+  const caster = state.character ? isSpellcasterClass(state.character.className) : true;
 
   return (
     <View
@@ -86,13 +96,21 @@ export function CombatRail({ bottomInset = 0 }: CombatRailProps) {
         )}
       </View>
       <View style={styles.chips}>
-        {ACTIONS.map((a) => {
+        {COMBAT_RAIL_ACTIONS.map((a) => {
           const selected = active === a.mode;
+          const label = a.mode === 'cast' && !caster ? 'Spark' : a.label;
           return (
             <Pressable
               key={a.mode}
               accessibilityRole="button"
-              accessibilityLabel={a.label}
+              accessibilityLabel={label}
+              accessibilityHint={
+                a.mode === 'cast' && !caster
+                  ? "You're no spellcaster: a feeble spark (best of INT/WIS/CHA to hit)."
+                  : a.mode === 'flee'
+                    ? 'DEX check vs DC 10 to escape; if it fails, the foe attacks.'
+                    : undefined
+              }
               accessibilityState={{ selected }}
               onPress={() => runCombatAction(a.mode)}
               style={({ pressed }) => [
@@ -101,16 +119,20 @@ export function CombatRail({ bottomInset = 0 }: CombatRailProps) {
                 pressed && styles.chipPressed,
               ]}
             >
-              <Image
-                source={appImages[a.icon]}
-                style={[styles.icon, selected && styles.iconActive]}
-                resizeMode="contain"
-              />
+              {a.icon ? (
+                <Image
+                  source={appImages[a.icon]}
+                  style={[styles.icon, selected && styles.iconActive]}
+                  resizeMode="contain"
+                />
+              ) : (
+                <Text style={[styles.glyph, selected && styles.chipLabelActive]}>{a.glyph}</Text>
+              )}
               <Text
                 style={[styles.chipLabel, selected && styles.chipLabelActive]}
                 numberOfLines={1}
               >
-                {a.label}
+                {label}
               </Text>
             </Pressable>
           );
@@ -167,19 +189,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
+  // QA-02: six actions (incl. Flee) on one row on small phones.
   chips: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    flexWrap: 'nowrap',
+    gap: 6,
   },
   chip: {
-    flexGrow: 1,
-    minWidth: 56,
+    flex: 1,
+    minWidth: 0,
     maxWidth: 88,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 8,
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: theme.colors.accent,
@@ -201,6 +224,16 @@ const styles = StyleSheet.create({
     // gold line-art on dark; invert feel when filled
     tintColor: undefined,
   },
+  glyph: {
+    width: 28,
+    height: 28,
+    marginBottom: 4,
+    color: theme.colors.accent,
+    fontSize: 22,
+    lineHeight: 28,
+    textAlign: 'center',
+    fontWeight: '700',
+  },
   iconActive: {
     // pressed: accent fill + dark glyph feel via opacity on gold art
     opacity: 0.95,
@@ -210,7 +243,7 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.2,
+    letterSpacing: 0,
     textAlign: 'center',
   },
   chipLabelActive: {

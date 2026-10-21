@@ -23,7 +23,7 @@ import {
   type TradeResult,
   type CampaignState,
   type CampaignStatePatch,
-  type CombatMode,
+  type CombatActionKind,
 } from '../../engine';
 import { useSettings } from '../settings/SettingsContext';
 
@@ -34,7 +34,7 @@ type CampaignStateContextValue = {
   campaign: CampaignSave;
   applyPatch: (patch: CampaignStatePatch) => void;
   replaceCampaign: (next: CampaignSave) => void;
-  runCombatAction: (mode: Exclude<CombatMode, 'idle'>) => void;
+  runCombatAction: (mode: CombatActionKind) => void;
   /** P-INT-01: Items panel action → CampaignState patch (+ Tale beat when meaningful). */
   runItemAction: (req: ItemActionRequest) => ItemActionResult;
   /** P-INT-03: level-up / ability point spend → CampaignState patch. */
@@ -101,7 +101,7 @@ export function CampaignStateProvider({
   );
 
   const runCombatAction = useCallback(
-    (mode: Exclude<CombatMode, 'idle'>) => {
+    (mode: CombatActionKind) => {
       // COMBAT-02: full dice-backed round (player then foe), logged to Tale.
       const { campaign: next } = applyCombatTurn(campaign, mode, {
         logRejection: true,

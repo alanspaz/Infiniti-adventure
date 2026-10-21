@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -27,6 +28,7 @@ import {
 import { createPlayNarrator } from '../ai';
 import { STUB_SAFE_PROSE } from '../../engine/narrator';
 import { StillFrame } from '../components/StillFrame';
+import { COMPOSER_NATIVE_PROPS, isComposerSubmitKey } from '../components/composerKeys';
 import { TaleBackdrop } from '../components/TaleBackdrop';
 import { appImages } from '../images';
 import { createAppStillProvider } from '../persist/stillCache';
@@ -673,8 +675,19 @@ export function SceneScreen({
             editable={!busy}
             multiline
             accessibilityLabel="Player action"
-            blurOnSubmit={false}
             maxLength={MAX_INPUT_CHARS}
+            // QA-02: Enter sends. Native: Return key = send (no newline).
+            {...COMPOSER_NATIVE_PROPS}
+            onSubmitEditing={submitAction}
+            // Web: Enter sends, Shift+Enter inserts a newline.
+            onKeyPress={(e) => {
+              if (Platform.OS !== 'web') return;
+              const ne = e.nativeEvent as unknown as { key?: string; shiftKey?: boolean; isComposing?: boolean };
+              if (isComposerSubmitKey(ne)) {
+                (e as unknown as { preventDefault?: () => void }).preventDefault?.();
+                submitAction();
+              }
+            }}
           />
           <Pressable
             accessibilityRole="button"
@@ -704,7 +717,8 @@ const styles = StyleSheet.create({
   },
   root: {
     padding: theme.spacing.md,
-    paddingBottom: theme.spacing.md,
+    // QA-02: tighter gap between the last beat and the composer / rail.
+    paddingBottom: theme.spacing.xs,
     flexGrow: 1,
   },
   back: {

@@ -37,8 +37,11 @@ export type CreateFromIdentityOptions = {
 
 const SEED_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
-function trimName(name: string): string {
-  return name.trim();
+/** QA-02: character names keep at least 24 characters (form + engine share this). */
+export const MAX_CHARACTER_NAME = 32;
+
+export function trimName(name: string): string {
+  return name.replace(/\s+/g, ' ').trim().slice(0, MAX_CHARACTER_NAME).trim();
 }
 
 /** Opaque on-device sealed backstory seed (not narrated here). */

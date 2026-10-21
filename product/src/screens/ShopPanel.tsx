@@ -1,12 +1,11 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
-  buyPrice,
   getMerchantDef,
-  merchantState,
-  sellPrice,
+  shopRows,
   tradeLedger,
-  type InventoryItem,
+  type ShopRow,
+  type ShopRowMemory,
 } from '../../engine';
 import { useCampaignState } from '../campaign';
 import { theme } from '../theme';
@@ -21,6 +20,11 @@ export function ShopPanel() {
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(
     null,
   );
+  // QA-02: remember rows seen while this shop is open so nothing jumps.
+  const memory = useRef<{ merchantId: string | null; rows: ShopRowMemory }>({
+    merchantId: null,
+    rows: { player: [], merchant: [] },
+  });
   const merchantId = state.shop.activeMerchantId;
   const def = merchantId ? getMerchantDef(merchantId) : null;
   if (!merchantId || !def) {
@@ -34,7 +38,11 @@ export function ShopPanel() {
       </View>
     );
   }
-  const m = merchantState(state, merchantId);
+  if (memory.current.merchantId !== merchantId) {
+    memory.current = { merchantId, rows: { player: [], merchant: [] } };
+  }
+  const rows = shopRows(state, merchantId, memory.current.rows);
+  memory.current.rows = rows.memory;
   const ledger = tradeLedger(state, merchantId);
 
   const trade = (kind: 'buy' | 'sell', itemId: string) => {
@@ -52,103 +60,87 @@ export function ShopPanel() {
       <Text style={styles.keeper}>{def.keeper}</Text>
 
       <View style={styles.ledger} accessibilityLabel="Trade ledger">
-        <Text style={styles.ledgerLine}>
-          You <Text style={styles.gold}>{ledger.playerGold}g</Text> ·{' '}
-          {ledger.playerUnits} items
-        </Text>
-        <Text style={styles.ledgerLine}>
-          Merchant <Text style={styles.gold}>{ledger.merchantGold}g</Text> ·{' '}
-          {ledger.merchantUnits} items
-        </Text>
-        <Text style={styles.ledgerTotal}>
-          Total {ledger.totalGold}g · {ledger.totalUnits} items
-        </Text>
+        <LedgerLine label="You" gold={ledger.playerGold} units={ledger.playerUnits} />
+        <LedgerLine label="Merchant" gold={ledger.merchantGold} units={ledger.merchantUnits} />
+        <LedgerLine label="Total" gold={ledger.totalGold} units={ledger.totalUnits} muted />
       </View>
 
-      {feedback ? (
-        <Text
-          style={[styles.feedback, !feedback.ok && styles.feedbackMuted]}
-          accessibilityLiveRegion="polite"
-        >
-          {feedback.text}
-        </Text>
-      ) : null}
+      {/* Fixed-height feedback slot: always present so rows never shift. */}
+      <Text
+        style={[styles.feedback, feedback && !feedback.ok && styles.feedbackMuted]}
+        accessibilityLiveRegion="polite"
+        numberOfLines={2}
+      >
+        {feedback?.text ?? ' '}
+      </Text>
 
       <View style={styles.columns}>
         <View style={styles.col}>
           <Text style={styles.colTitle}>Your bag</Text>
-          {state.inventory.items.length === 0 ? (
+          {rows.player.length === 0 ? (
             <Text style={styles.none}>Nothing to sell.</Text>
           ) : (
-            state.inventory.items.map((it) => (
-              <TradeRow
-                key={it.id}
-                item={it}
-                price={sellPrice(state, merchantId, it)}
-                action="Sell"
-                tag={it.kind === 'quest' ? 'quest' : it.equipped ? 'equipped' : null}
-                onPress={() => trade('sell', it.id)}
-              />
+            rows.player.map((r) => (
+              <TradeRow key={r.id} row={r} action="Sell" onPress={() => trade('sell', r.id)} />
             ))
           )}
         </View>
         <View style={styles.col}>
           <Text style={styles.colTitle}>For sale</Text>
-          {m.stock.length === 0 ? (
-            <Text style={styles.none}>Sold out.</Text>
-          ) : (
-            m.stock.map((it) => {
-              const price = buyPrice(state, merchantId, it);
-              return (
-                <TradeRow
-                  key={it.id}
-                  item={it}
-                  price={price}
-                  action="Buy"
-                  tag={price > state.inventory.gold ? 'too dear' : null}
-                  onPress={() => trade('buy', it.id)}
-                />
-              );
-            })
-          )}
+          {rows.merchant.map((r) => (
+            <TradeRow key={r.id} row={r} action="Buy" onPress={() => trade('buy', r.id)} />
+          ))}
         </View>
       </View>
     </ScrollView>
   );
 }
 
+/** QA-02: fixed-width columns (tabular digits) so the ledger never reflows. */
+function LedgerLine({ label, gold, units, muted }: { label: string; gold: number; units: number; muted?: boolean }) {
+  return (
+    <View style={styles.ledgerRow}>
+      <Text style={[styles.ledgerLabel, muted && styles.ledgerMuted]}>{label}</Text>
+      <Text style={[styles.ledgerNum, styles.gold, muted && styles.ledgerMuted]}>{gold}g</Text>
+      <Text style={[styles.ledgerNum, muted && styles.ledgerMuted]}>{units} items</Text>
+    </View>
+  );
+}
+
+/** Exported for smoke: every trade row renders at this exact height. */
+export const SHOP_ROW_HEIGHT = 92;
+
 function TradeRow({
-  item,
-  price,
+  row,
   action,
-  tag,
   onPress,
 }: {
-  item: InventoryItem;
-  price: number;
+  row: ShopRow;
   action: 'Buy' | 'Sell';
-  tag: string | null;
   onPress: () => void;
 }) {
+  const dim = row.disabled || row.muted;
   return (
-    <View style={styles.row}>
-      <Text style={styles.itemName} numberOfLines={2}>
-        {item.name}
+    <View style={[styles.row, row.disabled && styles.rowEmpty]}>
+      <Text style={styles.itemName} numberOfLines={1}>
+        {row.item.name}
       </Text>
-      <Text style={styles.itemMeta}>
-        ×{item.qty} · {price}g{tag ? ` · ${tag}` : ''}
+      <Text style={styles.itemMeta} numberOfLines={1}>
+        ×{row.qty} · {row.price}g{row.tag ? ` · ${row.tag}` : ''}
       </Text>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${action} ${item.name} for ${price} gold`}
+        accessibilityLabel={`${action} ${row.item.name} for ${row.price} gold`}
+        accessibilityState={{ disabled: row.disabled }}
+        disabled={row.disabled}
         onPress={onPress}
         style={({ pressed }) => [
           styles.btn,
-          tag && styles.btnMuted,
-          pressed && styles.pressed,
+          dim && styles.btnMuted,
+          pressed && !row.disabled && styles.pressed,
         ]}
       >
-        <Text style={[styles.btnLabel, tag && styles.btnLabelMuted]}>{action}</Text>
+        <Text style={[styles.btnLabel, dim && styles.btnLabelMuted]}>{action}</Text>
       </Pressable>
     </View>
   );
@@ -167,18 +159,22 @@ const styles = StyleSheet.create({
     padding: theme.spacing.sm,
     marginBottom: theme.spacing.sm,
   },
-  ledgerLine: { color: theme.colors.text, fontSize: 13, lineHeight: 19 },
-  ledgerTotal: {
-    color: theme.colors.textMuted,
-    fontSize: 12,
-    marginTop: 2,
-    fontWeight: '600',
+  ledgerRow: { flexDirection: 'row', alignItems: 'center', height: 20 },
+  ledgerLabel: { width: 76, color: theme.colors.text, fontSize: 13 },
+  ledgerNum: {
+    width: 72,
+    textAlign: 'right',
+    color: theme.colors.text,
+    fontSize: 13,
+    fontVariant: ['tabular-nums'],
   },
+  ledgerMuted: { color: theme.colors.textMuted, fontWeight: '600' },
   gold: { color: theme.colors.accent, fontWeight: '700' },
   feedback: {
     color: theme.colors.accent,
     fontSize: 13,
     lineHeight: 18,
+    height: 36,
     marginBottom: theme.spacing.sm,
   },
   feedbackMuted: { color: theme.colors.textMuted },
@@ -194,6 +190,8 @@ const styles = StyleSheet.create({
   },
   none: { color: theme.colors.textMuted, fontSize: 13 },
   row: {
+    height: SHOP_ROW_HEIGHT,
+    justifyContent: 'space-between',
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.background,
@@ -201,14 +199,15 @@ const styles = StyleSheet.create({
     padding: theme.spacing.sm,
     marginBottom: theme.spacing.xs,
   },
+  rowEmpty: { opacity: 0.55 },
   itemName: { color: theme.colors.text, fontSize: 14, fontWeight: '700' },
   itemMeta: { color: theme.colors.textMuted, fontSize: 12, marginTop: 2 },
   btn: {
-    marginTop: 6,
+    height: 30,
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: theme.colors.accent,
     borderRadius: 6,
-    paddingVertical: 5,
     alignItems: 'center',
   },
   btnMuted: { borderColor: theme.colors.border },

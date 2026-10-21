@@ -28,6 +28,20 @@ export const PLAY_ICONS: { id: Exclude<PlayPanelId, 'stills'>; label: string }[]
   { id: 'settings', label: 'Settings' },
 ];
 
+/**
+ * QA-02: tile metrics. Content (padding + icon + gap + one label line) must fit
+ * inside CELL_MIN_HEIGHT so labels never clip (smoke checks the sum).
+ */
+export const ICON_GRID_METRICS = {
+  cellMinHeight: 60,
+  paddingVertical: 6,
+  icon: 26,
+  iconGap: 3,
+  labelFontSize: 9,
+  labelLineHeight: 13,
+} as const;
+const M = ICON_GRID_METRICS;
+
 type Props = {
   active: PlaySurfaceId;
   onChange: (id: Exclude<PlayPanelId, 'stills'>) => void;
@@ -149,13 +163,13 @@ const styles = StyleSheet.create({
     width: '22%',
     flexGrow: 1,
     minWidth: 64,
-    height: 44,
+    minHeight: M.cellMinHeight,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 4,
+    paddingVertical: M.paddingVertical,
     paddingHorizontal: 2,
   },
   cellActive: {
@@ -163,9 +177,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#241c16',
   },
   icon: {
-    width: 28,
-    height: 28,
-    marginBottom: 2,
+    width: M.icon,
+    height: M.icon,
+    marginBottom: M.iconGap,
     opacity: 0.85,
   },
   iconActive: {
@@ -173,7 +187,9 @@ const styles = StyleSheet.create({
   },
   label: {
     color: theme.colors.textMuted,
-    fontSize: 9,
+    fontSize: M.labelFontSize,
+    lineHeight: M.labelLineHeight,
+    includeFontPadding: false,
     fontWeight: '600',
     textAlign: 'center',
     textTransform: 'uppercase',

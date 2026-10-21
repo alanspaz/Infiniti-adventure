@@ -93,8 +93,13 @@ function PlayShellInner({ onLeave }: { onLeave: () => void }) {
 
   // UX-01b: assume Android 3-button nav visible — aggressive clearance.
   // Keep inset on the OUTER wrapper so KeyboardAvoidingView cannot cancel it.
-  const ANDROID_NAV_ASSUME = 48;
-  const bottomPad = Math.max(insets.bottom, ANDROID_NAV_ASSUME) + 16;
+  // QA-02: the 48dp nav assumption is Android-only; web/iOS use the real inset
+  // (closes the dead band under the rail/composer on web).
+  const ANDROID_NAV_ASSUME = Platform.OS === 'android' ? 48 : 0;
+  const bottomPad =
+    Platform.OS === 'android'
+      ? Math.max(insets.bottom, ANDROID_NAV_ASSUME) + 16
+      : insets.bottom + 4;
 
   return (
     <View style={[styles.root, { paddingBottom: bottomPad }]}>

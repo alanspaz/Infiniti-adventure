@@ -60,6 +60,15 @@ export type RoutedInput = {
   outcome?: CombatOutcome;
 };
 
+/** QA-02: "a potion" → "potion" for replies (strips leading articles/possessives). */
+export function bareItemName(phrase: string): string {
+  const unquote = (x: string) => x.trim().replace(/^["'“”‘’]+|["'“”‘’.!?;,]+$/g, '').trim();
+  let t = unquote(phrase);
+  const re = /^(?:a|an|the|my|some|your|this|that|one|any)\s+/i;
+  while (re.test(t)) t = unquote(t.replace(re, ''));
+  return t || phrase.trim();
+}
+
 export function clampPlayerInput(text: string): string {
   return text.trim().slice(0, MAX_INPUT_CHARS).trim();
 }
@@ -173,8 +182,8 @@ function typedBuySell(campaign: CampaignSave, text: string, kind: 'buy' | 'sell'
   if (!item) {
     const msg =
       kind === 'buy'
-        ? `${def.keeper} has no "${phrase}" for sale. ${def.greeting}`
-        : `You don't have any "${phrase}" to sell.`;
+        ? `${def.keeper} has no ${bareItemName(phrase)} for sale. ${def.greeting}`
+        : `You don't have any ${bareItemName(phrase)} to sell.`;
     return { campaign: beat(campaign, openPatch, msg, text, now), route: 'trade', ok: false, message: msg };
   }
   const result = resolveTrade(state, { kind, merchantId: def.id, itemId: item.id });
@@ -251,7 +260,7 @@ function runItem(
   const item = findInventoryItem(state, cmd.object);
   if (!item) {
     if (!cmd.verb.strict) return null;
-    const msg = `You don't have any "${cmd.object}". ${inventoryLine(state)}`;
+    const msg = `You don't have any ${bareItemName(cmd.object)}. ${inventoryLine(state)}`;
     return { campaign: beat(campaign, {}, msg, text, now), route: 'item', ok: false, message: msg };
   }
   let req: ItemActionRequest;
@@ -381,7 +390,7 @@ export function routePlayerInput(
   const take = text.match(TAKE_RE);
   if (take?.[1] && !TAKE_IDIOM_RE.test(take[1]) && detectTravelIntent(text, opts.map, loc).kind === 'none' && !detectTradeIntent(text)) {
     const obj = take[1].replace(/[.!?]+$/, '').trim();
-    const msg = `There's no ${obj.replace(/^(?:the|a|an|some|my)\s+/i, '')} here for the taking. Gear comes from fights, quests and the Emberford shops.`;
+    const msg = `There's no ${bareItemName(obj)} here for the taking. Gear comes from fights, quests and the Emberford shops.`;
     return { campaign: beat(campaign, {}, msg, text, now), route: 'no-loot', ok: false, message: msg };
   }
 

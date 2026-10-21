@@ -129,6 +129,12 @@ export function weaponProfile(state: CampaignState): PlayerAttackProfile {
 }
 
 /** Spell attack: best of INT/WIS/CHA; 1d10 force bolt, no damage mod. */
+/** QA-02: classes with real spellcraft (others can still throw a feeble spark). */
+const CASTER_CLASS_RE = /mage|wizard|sorcer|warlock|witch|bard|singer|cleric|druid|priest|adept|alchem|shaman|oracle/i;
+export function isSpellcasterClass(className: string | null | undefined): boolean {
+  return CASTER_CLASS_RE.test(className ?? '');
+}
+
 export function spellProfile(state: CampaignState): PlayerAttackProfile {
   const ab = pcAbilities(state);
   const mod = Math.max(
@@ -215,6 +221,7 @@ export function resolveCombatTurn(
   const seed = `${foe.id}:${combat.round}:${kind}`;
   const foeName = lowerName(foe);
   const patch: CampaignStatePatch = {};
+  const caster = !state.character || isSpellcasterClass(state.character.className);
 
   switch (kind) {
     case 'attack':
@@ -236,9 +243,11 @@ export function resolveCombatTurn(
                     ],
                 seed,
               )
-            : r.crit
-              ? `Your spark bolt detonates against ${foeName} in a blinding flash.`
-              : `A spark bolt cracks from your fingers and scorches ${foeName}.`,
+            : !caster
+              ? `You're no spellcaster — you scrape up a feeble spark and flick it at ${foeName}${r.crit ? '; by sheer luck it flares' : ''}. It stings.`
+              : r.crit
+                ? `Your spark bolt detonates against ${foeName} in a blinding flash.`
+                : `A spark bolt cracks from your fingers and scorches ${foeName}.`,
         );
       } else {
         prose.push(
@@ -250,7 +259,9 @@ export function resolveCombatTurn(
                 ],
                 seed,
               )
-            : `Your spark bolt sputters wide of ${foeName}.`,
+            : !caster
+              ? `You're no spellcaster — the feeble spark you scrape up fizzles before it reaches ${foeName}.`
+              : `Your spark bolt sputters wide of ${foeName}.`,
         );
       }
       break;
@@ -567,7 +578,7 @@ export function applyCombatIntent(
   const intro = `${/^[aeiou]/.test(lower) ? 'An' : 'A'} ${lower} squares up to you — ${foe.hp} HP, AC ${foe.ac}.`;
   let next = applyCampaignPatch(campaign, start);
   if (seeking) {
-    const narration = `${intro} Steel yourself: Attack, Cast, Defend, Dodge, or Use Item.`;
+    const narration = `${intro} Steel yourself: Attack, Cast, Defend, Dodge, Use Item, or Flee.`;
     next = appendBeat(next, {}, narration, text, null, now);
     return {
       campaign: next,

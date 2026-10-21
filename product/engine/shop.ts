@@ -467,3 +467,69 @@ export function applyOpenShop(
     merchantId: open.merchantId,
   };
 }
+
+/** QA-02: one stable shop row (sold-out rows stay in place with qty 0). */
+export type ShopRow = {
+  id: string;
+  item: InventoryItem;
+  qty: number;
+  price: number;
+  /** No unit left on this side: row stays, button disabled. */
+  disabled: boolean;
+  /** Tradeable-looking but will be refused with a reason (too dear, quest, equipped). */
+  muted: boolean;
+  tag: string | null;
+};
+
+export type ShopRowMemory = { player: InventoryItem[]; merchant: InventoryItem[] };
+
+function stableOrder(base: InventoryItem[], seen: InventoryItem[], current: InventoryItem[]): InventoryItem[] {
+  const out: InventoryItem[] = [];
+  const ids = new Set<string>();
+  for (const it of [...base, ...seen, ...current]) {
+    if (ids.has(it.id)) continue;
+    ids.add(it.id);
+    out.push(it);
+  }
+  return out;
+}
+
+/**
+ * Rows for both shop columns in a stable order. The merchant column always
+ * lists the merchant's catalog (table order), then anything else they've
+ * stocked; the player column keeps every item seen while the shop is open.
+ * Pass the returned memory back in on the next render so rows never move.
+ */
+export function shopRows(
+  state: CampaignState,
+  merchantId: string,
+  memory: ShopRowMemory = { player: [], merchant: [] },
+): { player: ShopRow[]; merchant: ShopRow[]; memory: ShopRowMemory } {
+  const def = getMerchantDef(merchantId);
+  const m = merchantState(state, merchantId);
+  const catalog = (def?.stock ?? []).map(({ price: _p, ...it }) => normalizeInventoryItem(it));
+  const merchantOrder = stableOrder(catalog, memory.merchant, m.stock);
+  const playerOrder = stableOrder([], memory.player, state.inventory.items);
+  const merchant = merchantOrder.map((base): ShopRow => {
+    const live = m.stock.find((i) => i.id === base.id);
+    const item = live ?? { ...base, qty: 0 };
+    const price = buyPrice(state, merchantId, item);
+    const tag = !live ? 'sold out' : price > state.inventory.gold ? 'too dear' : null;
+    return { id: base.id, item, qty: live?.qty ?? 0, price, disabled: !live, muted: tag !== null, tag };
+  });
+  const player = playerOrder.map((base): ShopRow => {
+    const live = state.inventory.items.find((i) => i.id === base.id);
+    const item = live ?? { ...base, qty: 0, equipped: false };
+    const price = sellPrice(state, merchantId, item);
+    const tag = !live ? 'sold' : item.kind === 'quest' ? 'quest' : item.equipped ? 'equipped' : null;
+    return { id: base.id, item, qty: live?.qty ?? 0, price, disabled: !live, muted: tag !== null, tag };
+  });
+  return {
+    player,
+    merchant,
+    memory: {
+      player: playerOrder.map((i) => ({ ...i })),
+      merchant: merchantOrder.map((i) => ({ ...i })),
+    },
+  };
+}

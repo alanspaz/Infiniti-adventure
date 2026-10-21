@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import {
   createCampaignFromIdentity,
+  MAX_CHARACTER_NAME,
   loadPlaystylePack,
   type CampaignSave,
   type OriginMode,
@@ -93,13 +94,20 @@ export function IdentityScreen({ packId, onBack, onCreated }: Props) {
           are never spawned automatically.
         </Text>
 
-        <Text style={styles.section}>Name</Text>
+        <View style={styles.nameHead}>
+          <Text style={styles.section}>Name</Text>
+          <Text style={styles.counter} accessibilityLabel="Name length">
+            {name.length}/{MAX_CHARACTER_NAME}
+          </Text>
+        </View>
         <TextInput
           value={name}
           onChangeText={setName}
           placeholder="What are you called?"
           placeholderTextColor={theme.colors.textMuted}
           style={styles.input}
+          maxLength={MAX_CHARACTER_NAME}
+          autoCapitalize="words"
         />
 
         <Text style={styles.section}>Description</Text>
@@ -235,6 +243,15 @@ export function IdentityScreen({ packId, onBack, onCreated }: Props) {
 }
 
 const styles = StyleSheet.create({
+  nameHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+  },
+  counter: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+  },
   root: {
     flex: 1,
     backgroundColor: theme.colors.background,

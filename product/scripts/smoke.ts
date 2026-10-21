@@ -565,6 +565,32 @@ async function main() {
   assert.equal(typeof persistMod.createAppStillProvider, 'function');
   assert.equal(typeof persistMod.loadStillGallery, 'function');
 
+  // QA-02 UI polish checks (source + pure helpers; the App load below covers render-time imports).
+  {
+    const src = (rel: string) => fs.readFileSync(path.resolve(__dirname, '..', rel), 'utf8');
+    const keys = await import('../src/components/composerKeys');
+    assert.equal(keys.isComposerSubmitKey({ key: 'Enter' }), true);
+    assert.equal(keys.isComposerSubmitKey({ key: 'Enter', shiftKey: true }), false);
+    assert.equal(keys.isComposerSubmitKey({ key: 'Enter', isComposing: true }), false);
+    assert.equal(keys.isComposerSubmitKey({ key: 'a' }), false);
+    assert.equal(keys.COMPOSER_NATIVE_PROPS.returnKeyType, 'send');
+    const scene = src('src/screens/SceneScreen.tsx');
+    for (const needle of ['onKeyPress', 'isComposerSubmitKey', 'onSubmitEditing={submitAction}', '...COMPOSER_NATIVE_PROPS']) {
+      assert.ok(scene.includes(needle), `SceneScreen composer: ${needle}`);
+    }
+    const grid = src('src/components/PlayIconGrid.tsx');
+    const num = (k: string) => Number(new RegExp(`${k}:\\s*(\\d+)`).exec(grid)?.[1]);
+    const need = num('paddingVertical') * 2 + num('icon') + num('iconGap') + num('labelLineHeight');
+    assert.ok(need > 0 && need <= num('cellMinHeight'), `icon grid label fits (${need} <= ${num('cellMinHeight')})`);
+    assert.ok(!/\bheight:\s*44\b/.test(grid), 'icon grid has no fixed 44px cell height');
+    assert.ok(src('src/screens/IdentityScreen.tsx').includes('maxLength={MAX_CHARACTER_NAME}'), 'name maxLength');
+    assert.ok(engine.MAX_CHARACTER_NAME >= 24, 'name allows 24+ chars');
+    const rail = src('src/components/CombatRail.tsx');
+    assert.ok(/mode:\s*'flee'/.test(rail), 'combat rail has Flee');
+    assert.ok(/flexWrap:\s*'nowrap'/.test(rail), 'combat rail keeps one row');
+    assert.ok(src('src/screens/ShopPanel.tsx').includes('SHOP_ROW_HEIGHT'), 'shop rows fixed height');
+  }
+
   // QA-01: actually load App.tsx (bundled with native modules stubbed) and
   // execute every module top-level. Any load-time error fails smoke.
   const appMod = await loadAppInNode(path.resolve(__dirname, '..'));
