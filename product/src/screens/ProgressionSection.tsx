@@ -78,8 +78,8 @@ export function ProgressionSection() {
         </Pressable>
       ) : sum.nextLevelXp !== null ? (
         <Text style={styles.hint}>
-          {sum.nextLevelXp - sum.xp} XP to level {sum.level + 1}. Completing a
-          quest grants {QUEST_COMPLETE_XP} XP.
+          {sum.nextLevelXp - sum.xp} XP to level {sum.level + 1}. Earn XP by
+          winning fights and finishing quests (First steps: {QUEST_COMPLETE_XP} XP).
         </Text>
       ) : null}
 

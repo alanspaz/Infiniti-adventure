@@ -40,10 +40,13 @@ describe('P-INT-03 XP thresholds', () => {
     assert.equal(progressionSummary(st(c)).canLevelUp, true);
   });
 
-  it('completing a quest (Tale stub path) grants quest XP once', () => {
+  it('QA-01 P1-5: typed "complete the quest" pays nothing; scripted completion pays once', () => {
     let c = hero();
     const patch = patchesFromSceneBeat({ playerAction: 'complete the quest', quests: st(c).quests });
     c = applyCampaignPatch(c, patch);
+    assert.equal(st(c).progression.xp, 0);
+    assert.equal(st(c).quests[0]!.status, 'active');
+    c = applyCampaignPatch(c, { completeQuestId: st(c).quests[0]!.id });
     assert.equal(st(c).progression.xp, QUEST_COMPLETE_XP);
     // Re-completing an already-done quest grants nothing.
     c = applyCampaignPatch(c, { completeQuestId: st(c).quests[0]!.id });
@@ -156,7 +159,7 @@ describe('P-INT-03 save/load', () => {
     c = applyProgressionAction(c, { kind: 'spend-point', ability: 'wisdom' }).campaign;
     const back = st(parseCampaign(serializeCampaign(c)));
     const a = st(c);
-    assert.deepEqual(back.progression, { xp: 120, unspentPoints: 1 });
+    assert.deepEqual(back.progression, { xp: 120, unspentPoints: 1, rewardedQuestIds: [] });
     assert.equal(back.character!.level, 2);
     assert.equal(back.character!.abilities.wisdom, 11);
     assert.equal(back.combat.maxHp, a.combat.maxHp);
@@ -168,6 +171,6 @@ describe('P-INT-03 save/load', () => {
     const raw = JSON.parse(serializeCampaign(c));
     delete raw.world.progression;
     const back = st(parseCampaign(JSON.stringify(raw)));
-    assert.deepEqual(back.progression, { xp: 0, unspentPoints: 0 });
+    assert.deepEqual(back.progression, { xp: 0, unspentPoints: 0, rewardedQuestIds: [] });
   });
 });

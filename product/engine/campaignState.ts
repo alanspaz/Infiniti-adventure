@@ -120,13 +120,15 @@ export type ProgressionState = {
   xp: number;
   /** Ability points earned from level-ups, not yet spent. */
   unspentPoints: number;
+  /** QA-01 P1-5: quest ids whose completion XP was already paid (once per id). */
+  rewardedQuestIds: string[];
 };
 
 /** XP granted when a quest moves active → done (any path). */
 export const QUEST_COMPLETE_XP = 100;
 
 export function createEmptyProgression(): ProgressionState {
-  return { xp: 0, unspentPoints: 0 };
+  return { xp: 0, unspentPoints: 0, rewardedQuestIds: [] };
 }
 
 export function normalizeProgression(
@@ -136,7 +138,28 @@ export function normalizeProgression(
   return {
     xp: Math.max(0, Math.floor(Number(value.xp) || 0)),
     unspentPoints: Math.max(0, Math.floor(Number(value.unspentPoints) || 0)),
+    rewardedQuestIds: Array.isArray(value.rewardedQuestIds)
+      ? [...new Set(value.rewardedQuestIds.filter((x): x is string => typeof x === 'string'))]
+      : [],
   };
+}
+
+/**
+ * QA-01 P1-5: quests that pay XP on completion (defined sources only).
+ * Player-noted quests from the Tale ("accept the quest to …") pay nothing.
+ */
+export const QUEST_XP: Record<string, number> = {
+  'quest-first-steps': 100,
+};
+
+/** Scripted quest completions: quest id → location that completes it on arrival. */
+export const QUEST_ARRIVAL_TRIGGERS: Record<string, string> = {
+  // "Find your footing in Embervale…" — done once you step out into Emberford.
+  'quest-first-steps': 'locale.emberford',
+};
+
+export function questXpFor(id: string): number {
+  return QUEST_XP[id] ?? 0;
 }
 
 /** P-INT-04: one merchant's persisted purse + stock (seeded from tables on first trade). */
@@ -716,23 +739,40 @@ function applyQuestPatch(
  */
 export function applyCampaignPatch(
   campaign: CampaignSave,
-  patch: CampaignStatePatch,
+  patchIn: CampaignStatePatch,
 ): CampaignSave {
+  let patch = patchIn;
   const world = normalizeWorld(campaign.world);
+  // QA-01 P1-5: scripted arrival triggers (the only non-engine quest completion).
+  const arriveAt =
+    patch.locationId !== undefined ? patch.locationId : campaign.session.locationId ?? null;
+  if (!patch.completeQuestId && arriveAt) {
+    const trigger = world.quests.find(
+      (q) => q.status === 'active' && QUEST_ARRIVAL_TRIGGERS[q.id] === arriveAt,
+    );
+    if (trigger) patch = { ...patch, completeQuestId: trigger.id };
+  }
   const nextQuests = applyQuestPatch(world.quests, patch);
-  // P-INT-03: quests newly completed (active → done) grant XP.
-  const newlyDone = nextQuests.filter(
-    (q) =>
-      q.status === 'done' &&
-      world.quests.some((p) => p.id === q.id && p.status === 'active'),
-  ).length;
   const baseProg = normalizeProgression({
     ...world.progression,
     ...(patch.progression ?? {}),
   });
-  const xpGain =
-    Math.max(0, Math.floor(Number(patch.grantXp) || 0)) +
-    newlyDone * QUEST_COMPLETE_XP;
+  // P-INT-03 / QA-01 P1-5: quests newly completed (active → done) grant their
+  // table XP once per quest id, ever (persisted in rewardedQuestIds).
+  const rewarded = new Set(baseProg.rewardedQuestIds);
+  let questXp = 0;
+  for (const q of nextQuests) {
+    if (
+      q.status === 'done' &&
+      world.quests.some((p) => p.id === q.id && p.status === 'active') &&
+      questXpFor(q.id) > 0 &&
+      !rewarded.has(q.id)
+    ) {
+      rewarded.add(q.id);
+      questXp += questXpFor(q.id);
+    }
+  }
+  const xpGain = Math.max(0, Math.floor(Number(patch.grantXp) || 0)) + questXp;
   const nextWorld: CampaignWorldState = {
     inventory: applyInventoryPatch(world.inventory, patch),
     quests: nextQuests,
@@ -745,7 +785,7 @@ export function applyCampaignPatch(
       ...world.playPrefs,
       ...(patch.playPrefs ?? {}),
     }),
-    progression: { ...baseProg, xp: baseProg.xp + xpGain },
+    progression: { ...baseProg, xp: baseProg.xp + xpGain, rewardedQuestIds: [...rewarded] },
     merchants: normalizeMerchants({
       ...world.merchants,
       ...(patch.merchants ?? {}),
@@ -816,25 +856,9 @@ export function patchesFromSceneBeat(input: {
   }
   if (Object.keys(storyMeta).length > 0) patch.storyMeta = storyMeta;
 
-  // Stub item: "take/pick up/grab/loot <thing>"
-  const take = action.match(
-    /\b(?:take|pick\s*up|grab|loot|claim)\s+(?:the\s+|a\s+|an\s+)?(.+)$/i,
-  );
-  if (take?.[1]) {
-    const name = take[1].replace(/[.!?\s]+$/g, '').trim().slice(0, 48);
-    if (name.length >= 2) {
-      const id = `item-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
-      patch.addItem = { id, name, qty: 1, kind: 'gear' };
-    }
-  }
-
-  // Stub gold grant: "find/gain N gold/coins"
-  const gold = action.match(
-    /\b(?:find|gain|earn|loot|collect)\s+(\d+)\s*(?:gold|coins?|gp)\b/i,
-  );
-  if (gold?.[1]) {
-    patch.grantGold = Math.min(9999, parseInt(gold[1], 10) || 0);
-  }
+  // QA-01 P1-4: typed text never creates items or gold. Loot comes only from
+  // defined sources (combat loot tables, scripted finds); tests use the
+  // grantGold / addItem patches directly (non-player path).
 
   // Stub gold spend: "spend/pay N gold"
   const spend = action.match(
@@ -850,7 +874,9 @@ export function patchesFromSceneBeat(input: {
   );
   if (questAccept) {
     const title = (questAccept[1] ?? 'New quest').trim().slice(0, 64) || 'New quest';
-    const id = `quest-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'new'}`;
+    let id = `quest-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'new'}`;
+    // Never collide with (or revive) a rewarded, scripted quest.
+    if (questXpFor(id) > 0) id = `${id}-note`;
     patch.acceptQuest = {
       id,
       title,
@@ -870,9 +896,12 @@ export function patchesFromSceneBeat(input: {
     }
   }
 
-  // Stub quest complete → first active
+  // Stub quest complete → first active *player-noted* quest (QA-01 P1-5:
+  // rewarded quests complete only through their scripted triggers).
   if (/\b(?:complete|finish|done\s+with)\s+(?:the\s+)?quest\b/i.test(action)) {
-    const active = safeQuestList(input.quests).find((q) => q.status === 'active');
+    const active = safeQuestList(input.quests).find(
+      (q) => q.status === 'active' && questXpFor(q.id) === 0,
+    );
     if (active) {
       patch.completeQuestId = active.id;
     } else {

@@ -395,14 +395,29 @@ function cap(s: string): string {
 }
 
 /** Deterministic per-moment RNG for the UI (same state → same rolls; no save-scum). */
+function mix(h: number, n: number): number {
+  let x = Math.imul((h ^ (n >>> 0)) >>> 0, 2654435761) >>> 0;
+  x ^= x >>> 15;
+  x = Math.imul(x, 2246822519) >>> 0;
+  return (x ^ (x >>> 13)) >>> 0;
+}
+
+/**
+ * Deterministic per-round RNG from the save (no save-scumming: same save →
+ * same roll). QA-01 P1-7: seeded from monotonic counters (session.turn
+ * advances every combat beat; storyMeta.beatCount is uncapped) and mixed
+ * non-linearly, so fights never replay once the 40-beat log is full.
+ */
 export function combatRngFor(campaign: CampaignSave): Rng {
   let h = 2166136261;
   for (const ch of campaign.id) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
   const c = campaign.world?.combat;
-  const beats = campaign.session.storyBeats?.length ?? 0;
-  return createSeededRng(
-    (h + (campaign.session.rngSeed ?? 0) + (c?.round ?? 0) * 7919 + beats * 104729 + campaign.session.turn * 31) >>> 0,
-  );
+  const beatCount = campaign.world?.storyMeta?.beatCount ?? campaign.session.storyBeats?.length ?? 0;
+  h = mix(h, campaign.session.rngSeed ?? 0);
+  h = mix(h, campaign.session.turn);
+  h = mix(h, c?.round ?? 0);
+  h = mix(h, beatCount);
+  return createSeededRng(h);
 }
 
 function appendBeat(
@@ -419,7 +434,13 @@ function appendBeat(
   if (rollLine && beats.length > 0) {
     beats[beats.length - 1] = { ...beats[beats.length - 1]!, checkLine: rollLine };
   }
-  return applyCampaignPatch(campaign, { ...patch, ...beat, storyBeats: beats });
+  // QA-01 P1-7: every combat beat advances the turn clock (fresh RNG next round).
+  return applyCampaignPatch(campaign, {
+    ...patch,
+    ...beat,
+    storyBeats: beats,
+    session: { ...(patch.session ?? {}), turn: campaign.session.turn + 1 },
+  });
 }
 
 const ACTION_LABEL: Record<CombatActionKind, string> = {
@@ -473,16 +494,23 @@ export function applyCombatTurn(
 
 const SEEK_RE = /\b(?:look\s+for\s+(?:trouble|a\s+fight)|hunt|ambush|fight)\b/i;
 
-/** Classify typed Tale text while a fight is on. */
+/** Classify typed Tale text while a fight is on (QA-01 P1-6: cast/attack before flee). */
+const CAST_RE = /\b(?:cast|spell|magic|zap|fire\s*bolt|firebolt|lightning|hex|arcane)\b/i;
+const ATTACK_RE =
+  /\b(?:attack|strike|hit|swing|stab|slash|shoot|punch|kick|fight|cut|smash|bash|lunge|thrust)\b|\brun\s+(?:\w+\s+){0,3}through\b/i;
+const USE_RE = /\b(?:drink|quaff|potion|bandage|heal\s+(?:myself|me|up)|use\s+(?:an?\s+|my\s+|the\s+)?(?:item|salve|elixir|potion))\b/i;
+const FLEE_RE =
+  /\b(?:flee|run\s+away|run\s+for\s+it|retreat|escape|get\s+away|break\s+away|disengage|make\s+a\s+break|stand\s+down|surrender|spare(?:\s+(?:them|it|him|her))?|end\s+(?:the\s+)?(?:fight|combat))\b|^(?:i\s+)?run\b/i;
+
 export function classifyCombatText(text: string): CombatActionKind | 'end' | null {
   const t = text.trim();
-  if (/\b(?:flee|run\s+away|run|retreat|escape|bolt)\b/i.test(t)) return 'flee';
-  if (detectCombatExitFromAction(t)) return 'end';
-  if (/\b(?:drink|quaff|potion|heal|bandage|use\s+(?:an?\s+|my\s+)?(?:item|salve|elixir))\b/i.test(t)) return 'use-item';
-  if (/\b(?:cast|spell|bolt|magic|zap)\b/i.test(t)) return 'cast';
+  if (CAST_RE.test(t)) return 'cast';
+  if (USE_RE.test(t)) return 'use-item';
+  if (ATTACK_RE.test(t)) return 'attack';
   if (/\b(?:defend|block|guard|parry|brace|shield\s+up)\b/i.test(t)) return 'defend';
   if (/\b(?:dodge|evade|duck|sidestep|weave)\b/i.test(t)) return 'dodge';
-  if (/\b(?:attack|strike|hit|swing|stab|slash|shoot|punch|kick|fight|cut|smash)\b/i.test(t)) return 'attack';
+  // QA-01 P1-2: every way out of a fight (stand down, surrender, spare…) is a flee roll.
+  if (FLEE_RE.test(t)) return 'flee';
   return null;
 }
 
@@ -505,16 +533,7 @@ export function applyCombatIntent(
 
   if (state.combat.inCombat) {
     const kind = classifyCombatText(text);
-    if (!kind) return null;
-    if (kind === 'end') {
-      const foe = state.combat.foe;
-      const patch = exitCombatPatch(state.combat, 'Stood down');
-      const narration = `You lower your guard. ${foe ? cap(lowerName(foe)) : 'Your foe'} backs off, and the moment passes.`;
-      return {
-        campaign: appendBeat(campaign, patch, narration, text, null, now),
-        result: { ok: true, outcome: 'ended', message: 'Fight ended.', patch, narration, rollLine: null },
-      };
-    }
+    if (!kind || kind === 'end') return null;
     const turn = applyCombatTurn(campaign, kind, { rng, playerLine: text, now });
     if (!turn.result.ok) {
       // Honest refusal still answers in the Tale (never silent).

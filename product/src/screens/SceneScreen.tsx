@@ -11,13 +11,12 @@ import {
 import type { CampaignSave, StoryBeatRecord } from '../../engine';
 import {
   applyCampaignPatch,
-  applyCombatIntent,
-  applyOpenShop,
   campaignToState,
   createSeededRng,
   createStarterMap,
-  detectTradeIntent,
-  detectTravelIntent,
+  clampPlayerInput,
+  MAX_INPUT_CHARS,
+  routePlayerInput,
   patchesFromSceneBeat,
   resolveSceneBeat,
   whereAmI,
@@ -443,28 +442,14 @@ export function SceneScreen({
   }, [campaign.session.locationId, campaign.id, busy]);
 
   const submitAction = () => {
-    const text = action.trim();
+    const text = clampPlayerInput(action);
     if (!text || busy) return;
-    // COMBAT-02: fight actions resolve with dice in the engine (rules-first);
-    // attack verbs start a fight; mid-fight text maps to rail actions.
-    const fight = applyCombatIntent(campaign, text);
-    if (fight) {
+    // QA-01: rules-first routing (combat, rest, items, progression, trade,
+    // honest refusals) before the narrator. Pure engine call — see engine/input.ts.
+    const routed = routePlayerInput(campaign, text, { map });
+    if (routed) {
       setAction('');
-      onCampaignChange(fight.campaign);
-      return;
-    }
-    // P-INT-04: "trade"/"shop"/"buy"… opens the merchant here (rules-first,
-    // stub greeting or honest refusal as the narrator beat). Travel wins.
-    if (
-      detectTradeIntent(text) &&
-      detectTravelIntent(
-        text,
-        map,
-        campaign.session.locationId ?? map.startNodeId,
-      ).kind === 'none'
-    ) {
-      setAction('');
-      onCampaignChange(applyOpenShop(campaign, text).campaign);
+      onCampaignChange(routed.campaign);
       return;
     }
     pendingPlayerLine.current = text;
@@ -689,6 +674,7 @@ export function SceneScreen({
             multiline
             accessibilityLabel="Player action"
             blurOnSubmit={false}
+            maxLength={MAX_INPUT_CHARS}
           />
           <Pressable
             accessibilityRole="button"

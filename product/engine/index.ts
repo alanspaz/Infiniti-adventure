@@ -20,3 +20,4 @@ export * from './shop';
 export * from './bestiary';
 export * from './combat';
 export * from './backdrop';
+export * from './input';

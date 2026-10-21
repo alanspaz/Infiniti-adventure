@@ -228,11 +228,14 @@ describe('campaignToState / story stubs', () => {
       storyBeats: [],
     });
     assert.equal(p.locationId, 'inn');
-    assert.equal(p.addItem?.name, 'rusty key');
+    // QA-01 P1-4: typed "take …" never creates an item.
+    assert.equal(p.addItem, undefined);
     assert.equal(p.storyMeta?.lastPlaceLine, 'At the inn.');
 
-    const gold = patchesFromSceneBeat({ playerAction: 'find 5 gold' });
-    assert.equal(gold.grantGold, 5);
+    // QA-01 P1-4: typed "find N gold" never grants gold.
+    for (const a of ['find 5 gold', 'find 500 gold', 'loot 9999 gold']) {
+      assert.equal(patchesFromSceneBeat({ playerAction: a }).grantGold, undefined, a);
+    }
 
     const spend = patchesFromSceneBeat({ playerAction: 'pay 2 gold' });
     assert.equal(spend.spendGold, 2);
