@@ -1,18 +1,13 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { AbilityKey, CampaignSave, CharacterSheet } from '../../engine';
-import {
-  ABILITY_KEYS,
-  armorClassWithGear,
-  deriveStats,
-  equippedLoadout,
-  itemTraits,
-  safeInventory,
-} from '../../engine';
+import type { AbilityKey, CampaignSave } from '../../engine';
+import { deriveStats, selectCharacterTab, selectGearTab } from '../../engine';
+import { useCampaignState } from '../campaign';
 import { theme } from '../theme';
 import { CombatStatsTab } from './CombatStatsTab';
 import { ProgressionSection } from './ProgressionSection';
+import { Bar } from './infoTabKit';
 
 /** CHAR-01: stub mana/focus by class flavor — "—" when the class has none. */
 function resourceSlotsFor(className: string): { mana: string; focus: string } {
@@ -29,8 +24,8 @@ function resourceSlotsFor(className: string): { mana: string; focus: string } {
 
 
 type Props = {
-  /** Active campaign; null → empty-state. */
-  campaign: CampaignSave | null;
+  /** Kept for API compatibility; the sheet reads CampaignState (TABS-01). */
+  campaign?: CampaignSave | null;
   onBack?: () => void;
   /** Hide back chrome when inside PlayShell. */
   embedded?: boolean;
@@ -50,22 +45,19 @@ function formatMod(n: number): string {
 }
 
 /**
- * Character sheet: active campaign PC identity + derived stats from engine.
- * Empty-state when no campaign or empty party (empty party is valid).
+ * Character tab (TABS-01): a pure read of CampaignState via
+ * selectCharacterTab — vitals first, then conditions, the story so far
+ * (recorded events only), XP / level-up (ProgressionSection), AC breakdown,
+ * gear, abilities, derived stats and combat readiness.
+ * Empty-state when the party is empty (empty party is valid).
  */
-export function CharacterSheetScreen({ campaign, onBack, embedded = false }: Props) {
+export function CharacterSheetScreen({ onBack, embedded = false }: Props) {
   const insets = useSafeAreaInsets();
-  const pc: CharacterSheet | null =
-    campaign && campaign.party.length > 0 ? campaign.party[0]! : null;
-
-  const derived = useMemo(
-    () => (pc ? deriveStats(pc) : null),
-    [pc],
-  );
-
-  const inventory = safeInventory(campaign?.world?.inventory);
-  const loadout = equippedLoadout(inventory);
-  const gearAc = pc ? armorClassWithGear(pc.abilities.dexterity, inventory) : null;
+  const { state } = useCampaignState();
+  const pc = state.character;
+  const tab = selectCharacterTab(state);
+  const gear = selectGearTab(state);
+  const derived = pc ? deriveStats(pc) : null;
 
   // UX-01b: character / derived sections clear Android nav (outer pad + scroll pad).
   const bottomClear = Math.max(insets.bottom, 48) + 24;
@@ -93,39 +85,29 @@ export function CharacterSheetScreen({ campaign, onBack, embedded = false }: Pro
         </Text>
       ) : null}
 
-      {!campaign ? (
-        <View style={styles.card}>
-          <Text style={styles.emptyTitle}>No active campaign</Text>
-          <Text style={styles.emptyBody}>
-            Start a new campaign from Home to create your character, then return
-            here to view the sheet.
-          </Text>
-        </View>
-      ) : !pc ? (
+      {!pc || !tab || !derived ? (
         <View style={styles.card}>
           <Text style={styles.emptyTitle}>Empty party</Text>
           <Text style={styles.emptyBody}>
-            Campaign “{campaign.title}” has no characters yet. Empty party is
+            Campaign “{state.title}” has no characters yet. Empty party is
             valid — add a PC when you are ready (solo by default).
           </Text>
         </View>
-      ) : derived ? (
+      ) : (
         <>
           <View style={styles.card}>
-            <Text style={styles.bannerLabel}>Active PC</Text>
-            <Text style={styles.name}>{pc.name}</Text>
+            <Text style={styles.name}>{tab.name}</Text>
+            <Text style={styles.meta}>
+              {tab.packName} · {tab.className} · Level {tab.level}
+            </Text>
             {(() => {
-              const maxHp =
-                campaign.world?.combat?.maxHp ?? derived.maxHitPoints;
-              const hp =
-                campaign.world?.combat?.hp ?? maxHp;
               const slots = resourceSlotsFor(pc.className);
               return (
                 <View style={styles.vitalsRow}>
                   <Text style={styles.vitalPrimary}>
                     HP{' '}
                     <Text style={styles.vitalValue}>
-                      {hp}/{maxHp}
+                      {tab.hp}/{tab.maxHp}
                     </Text>
                   </Text>
                   <Text style={styles.vitalSlot}>
@@ -134,12 +116,84 @@ export function CharacterSheetScreen({ campaign, onBack, embedded = false }: Pro
                   <Text style={styles.vitalSlot}>
                     Focus <Text style={styles.vitalValue}>{slots.focus}</Text>
                   </Text>
+                  <Text style={styles.vitalSlot}>
+                    AC <Text style={styles.vitalValue}>{tab.ac.total}</Text>
+                  </Text>
                 </View>
               );
             })()}
-            <Text style={styles.meta}>
-              {pc.className} · Level {pc.level} · AC {gearAc}
+            <Bar pct={tab.maxHp > 0 ? tab.hp / tab.maxHp : 0} />
+            <Text style={styles.metaSmall}>
+              {tab.conditions.length ? tab.conditions.join(' · ') : 'No conditions'}
             </Text>
+          </View>
+
+          <Text style={styles.section}>Story so far</Text>
+          <View style={styles.card}>
+            <Text style={styles.storyLine}>{tab.storySoFar}</Text>
+          </View>
+
+          {/* P-INT-03: XP / level-up / ability points (directly under HP header). */}
+          {embedded ? <ProgressionSection /> : null}
+
+          <Text style={styles.section}>Armor class</Text>
+          <View style={styles.card}>
+            <StatRow label={tab.ac.baseLabel} value={String(tab.ac.base)} />
+            <StatRow label="Dexterity" value={formatMod(tab.ac.dex)} />
+            {tab.ac.shieldLabel ? (
+              <StatRow label={tab.ac.shieldLabel} value={formatMod(tab.ac.shield)} />
+            ) : null}
+            {tab.ac.stance ? <StatRow label="Stance" value={formatMod(tab.ac.stance)} /> : null}
+            <StatRow label="Total AC" value={String(tab.ac.total)} />
+          </View>
+
+          <Text style={styles.section}>Equipped</Text>
+          <View style={styles.card}>
+            {gear.slots
+              .filter((sl) => sl.slot !== 'shield' || sl.item)
+              .map((sl) => (
+                <StatRow
+                  key={sl.slot}
+                  label={sl.label}
+                  value={sl.item ? `${sl.item.name}${sl.detail ? ` (${sl.detail})` : ''}` : sl.detail}
+                />
+              ))}
+          </View>
+
+          <Text style={styles.section}>Abilities</Text>
+          <View style={styles.card}>
+            {tab.abilities.map((a) => (
+              <View key={a.key} style={styles.abilityRow}>
+                <Text style={styles.abilityLabel}>{ABILITY_LABELS[a.key]}</Text>
+                <Text style={styles.abilityScore}>{a.score}</Text>
+                <Text style={styles.abilityMod}>{formatMod(a.mod)}</Text>
+              </View>
+            ))}
+          </View>
+
+          <Text style={styles.section}>Derived</Text>
+          <View style={styles.card}>
+            <StatRow
+              label="Proficiency bonus"
+              value={formatMod(derived.proficiencyBonus)}
+            />
+            <StatRow label="Armor class" value={String(tab.ac.total)} />
+            <StatRow
+              label="Max hit points"
+              value={String(derived.maxHitPoints)}
+            />
+            <StatRow
+              label="Initiative"
+              value={formatMod(derived.initiativeBonus)}
+            />
+            <StatRow
+              label="Passive perception"
+              value={String(derived.passivePerception)}
+            />
+          </View>
+
+          <Text style={styles.section}>Identity</Text>
+          <View style={styles.card}>
             <Text style={styles.metaSmall}>Hit die d{pc.hitDie}</Text>
             {pc.age !== null ? (
               <Text style={styles.meta}>Age: {pc.age}</Text>
@@ -156,84 +210,15 @@ export function CharacterSheetScreen({ campaign, onBack, embedded = false }: Pro
                 Sealed backstory seed on file (not revealed here).
               </Text>
             ) : null}
-            <Text style={styles.metaMuted}>
-              Campaign: {campaign.title} · Pack:{' '}
-              {campaign.playstylePackId ?? 'none'}
-            </Text>
-          </View>
-
-          {/* P-INT-03: XP / level-up / ability points (directly under HP header). */}
-          {embedded ? <ProgressionSection /> : null}
-
-          <Text style={styles.section}>Equipped</Text>
-          <View style={styles.card}>
-            <StatRow
-              label="Weapon"
-              value={
-                loadout.weapon
-                  ? `${loadout.weapon.name} (${itemTraits(loadout.weapon).damage})`
-                  : 'Unarmed'
-              }
-            />
-            <StatRow
-              label="Armor"
-              value={
-                loadout.armor
-                  ? `${loadout.armor.name} (AC ${itemTraits(loadout.armor).armorBase} + DEX)`
-                  : 'None'
-              }
-            />
-            {loadout.shield ? (
-              <StatRow
-                label="Shield"
-                value={`${loadout.shield.name} (+${itemTraits(loadout.shield).armorBase})`}
-              />
-            ) : null}
-          </View>
-
-          <Text style={styles.section}>Abilities</Text>
-          <View style={styles.card}>
-            {ABILITY_KEYS.map((key) => (
-              <View key={key} style={styles.abilityRow}>
-                <Text style={styles.abilityLabel}>{ABILITY_LABELS[key]}</Text>
-                <Text style={styles.abilityScore}>{pc.abilities[key]}</Text>
-                <Text style={styles.abilityMod}>
-                  {formatMod(derived.modifiers[key])}
-                </Text>
-              </View>
-            ))}
-          </View>
-
-          <Text style={styles.section}>Derived</Text>
-          <View style={styles.card}>
-            <StatRow
-              label="Proficiency bonus"
-              value={formatMod(derived.proficiencyBonus)}
-            />
-            <StatRow
-              label="Armor class"
-              value={String(gearAc ?? derived.armorClass)}
-            />
-            <StatRow
-              label="Max hit points"
-              value={String(derived.maxHitPoints)}
-            />
-            <StatRow
-              label="Initiative"
-              value={formatMod(derived.initiativeBonus)}
-            />
-            <StatRow
-              label="Passive perception"
-              value={String(derived.passivePerception)}
-            />
+            <Text style={styles.metaMuted}>Campaign: {state.title}</Text>
           </View>
 
           {embedded ? <CombatStatsTab asSection /> : null}
         </>
-      ) : null}
+      )}
 
-      {/* Empty party / no campaign: still show combat slice when embedded. */}
-      {embedded && (!campaign || !pc) ? <CombatStatsTab asSection /> : null}
+      {/* Empty party: still show combat slice when embedded. */}
+      {embedded && !pc ? <CombatStatsTab asSection /> : null}
     </ScrollView>
   );
 }
@@ -316,8 +301,9 @@ const styles = StyleSheet.create({
   },
   metaSmall: {
     color: theme.colors.textMuted,
-    fontSize: 11,
-    lineHeight: 16,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 6,
     marginBottom: 2,
   },
   vitalsRow: {
@@ -351,6 +337,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     marginTop: theme.spacing.sm,
+  },
+  storyLine: {
+    color: theme.colors.text,
+    fontSize: 14,
+    lineHeight: 21,
+    fontStyle: 'italic',
   },
   sealed: {
     color: theme.colors.textMuted,

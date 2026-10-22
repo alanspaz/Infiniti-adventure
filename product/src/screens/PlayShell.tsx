@@ -232,7 +232,7 @@ function renderPanel(
       return <QuestTab />;
     case 'character':
       // UI-02: Character sheet includes combat readiness; CombatRail stays separate.
-      return <CharacterSheetScreen campaign={campaign} embedded />;
+      return <CharacterSheetScreen embedded />;
     case 'companions':
       return <CompanionsTab />;
     case 'items':
@@ -241,11 +241,7 @@ function renderPanel(
       return <ShopPanel />;
     case 'map':
       return (
-        <MapScreen
-          campaign={campaign}
-          onCampaignChange={replaceCampaign}
-          embedded
-        />
+        <MapScreen embedded />
       );
     case 'dice':
       return <DiceScreen campaign={campaign} embedded />;

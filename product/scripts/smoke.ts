@@ -446,7 +446,7 @@ async function main() {
     );
   }
   const questSrc = fs.readFileSync(path.join(screensDir, 'QuestTab.tsx'), 'utf8');
-  assert.match(questSrc, /partitionQuests/);
+  assert.match(questSrc, /selectQuestTab|partitionQuests/);
   assert.match(questSrc, /No quests yet|No active quests/);
   assert.doesNotMatch(questSrc, /useState\(/); // context-only, no local quest copy
   const itemsSrc = fs.readFileSync(path.join(screensDir, 'ItemsTab.tsx'), 'utf8');
@@ -537,6 +537,29 @@ async function main() {
   assert.match(mapSrc, /write it in the Tale|Tale/);
   assert.doesNotMatch(mapSrc, /\btravel\(/);
   assert.doesNotMatch(mapSrc, /setCampaignLocation/);
+  // TABS-01: every info tab is a pure read through its CampaignState selector.
+  {
+    const tabSrc = (f: string) => fs.readFileSync(path.join(screensDir, f), 'utf8');
+    for (const [f, sel] of [
+      ['CharacterSheetScreen.tsx', 'selectCharacterTab'],
+      ['MapScreen.tsx', 'selectMapTab'],
+      ['ItemsTab.tsx', 'selectGearTab'],
+      ['QuestTab.tsx', 'selectQuestTab'],
+      ['CompanionsTab.tsx', 'selectCompanionsTab'],
+    ] as const) {
+      const t = tabSrc(f);
+      assert.match(t, new RegExp(sel), `${f} reads ${sel}`);
+      assert.match(t, /useCampaignState/, `${f} reads CampaignState`);
+    }
+    for (const f of ['MapScreen.tsx', 'QuestTab.tsx', 'CompanionsTab.tsx', 'CharacterSheetScreen.tsx']) {
+      assert.doesNotMatch(tabSrc(f), /useState\(/, `${f} keeps no local state`);
+    }
+    // Map is info-only (no travel controls); recruitment stays parked (C-01).
+    assert.doesNotMatch(mapSrc, /onPress=\{[^}]*(travel|locationId)/);
+    assert.doesNotMatch(tabSrc('CompanionsTab.tsx'), /applyPatch|party:\s*\[|Invite|Recruit/);
+    const ch = await import('../engine/chronicle');
+    assert.equal(typeof ch.normalizeChronicle, 'function');
+  }
   assert.match(sceneSrc, /STUB_SAFE_PROSE|pending-/);
 
   const assetsDir = path.resolve(__dirname, '../assets');

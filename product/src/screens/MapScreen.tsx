@@ -1,36 +1,29 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { CampaignSave } from '../../engine';
-import { createStarterMap, whereAmI, type WhereAmIResult } from '../../engine';
+import { selectMapTab } from '../../engine';
+import { useCampaignState } from '../campaign';
 import { theme } from '../theme';
+import { Notes } from './infoTabKit';
 
 type Props = {
-  campaign: CampaignSave;
-  /** Kept for PlayShell API compatibility; Map no longer mutates location (MAP-01). */
+  /** Kept for PlayShell API compatibility; the tab reads CampaignState (TABS-01). */
+  campaign?: CampaignSave;
+  /** Kept for API compatibility; Map never mutates location (MAP-01). */
   onCampaignChange?: (campaign: CampaignSave) => void;
   embedded?: boolean;
   onBack?: () => void;
 };
 
 /**
- * Map tab (MAP-01): current location + nearby only.
+ * Map tab (MAP-01 / TABS-01): info only — where you are (region → town →
+ * building → floor → room), what is nearby, places you've been and places
+ * you've only heard of. Pure read of CampaignState via selectMapTab.
  * Travel is Story/Tale text → narration + CampaignState location patches — not Map buttons.
  */
-export function MapScreen({
-  campaign,
-  embedded = false,
-  onBack,
-}: Props) {
-  const graph = useMemo(() => createStarterMap(), []);
-  const locationId = campaign.session.locationId ?? graph.startNodeId;
-
-  let here: WhereAmIResult | null = null;
-  let loadError: string | null = null;
-  try {
-    here = whereAmI(graph, locationId);
-  } catch (err) {
-    loadError = err instanceof Error ? err.message : String(err);
-  }
+export function MapScreen({ embedded = false, onBack }: Props) {
+  const { state } = useCampaignState();
+  const map = selectMapTab(state);
 
   return (
     <ScrollView
@@ -54,32 +47,65 @@ export function MapScreen({
         — the narrator and campaign state move you.
       </Text>
 
-      {loadError ? (
-        <Text style={styles.error}>{loadError}</Text>
-      ) : here ? (
+      {!map.hereName ? (
+        <Text style={styles.muted}>Your whereabouts aren't on the map yet.</Text>
+      ) : (
         <>
           <View style={styles.card}>
             <Text style={styles.pathLabel}>Here</Text>
-            <Text style={styles.path}>{here.path}</Text>
-            <Text style={styles.name}>{here.name}</Text>
-            <Text style={styles.kind}>{here.kind}</Text>
-            <Text style={styles.body}>{here.description}</Text>
-            <Text style={styles.line}>You are at {here.name}.</Text>
+            {map.chain.map((link, i) => (
+              <View key={link.id} style={[styles.chainRow, { paddingLeft: i * 10 }]}>
+                <Text style={styles.chainLevel}>{link.level}</Text>
+                <Text style={i === map.chain.length - 1 ? styles.chainHere : styles.chainName}>
+                  {link.name}
+                </Text>
+              </View>
+            ))}
+            {map.description ? <Text style={styles.body}>{map.description}</Text> : null}
           </View>
 
           <Text style={styles.section}>Nearby</Text>
-          {here.exits.length === 0 ? (
+          {map.exits.length === 0 ? (
             <Text style={styles.muted}>Nothing obvious nearby from here.</Text>
           ) : (
-            here.exits.map((ex) => (
-              <View key={ex.id} style={styles.nearby}>
+            map.exits.map((ex) => (
+              <View key={`${ex.label}-${ex.toName}`} style={styles.nearby}>
                 <Text style={styles.exitLabel}>{ex.toName}</Text>
                 <Text style={styles.exitMeta}>{ex.label}</Text>
               </View>
             ))
           )}
         </>
-      ) : null}
+      )}
+
+      <Text style={styles.section}>Places you've been ({map.visited.length})</Text>
+      {map.visited.length === 0 ? (
+        <Text style={styles.muted}>Nowhere yet.</Text>
+      ) : (
+        map.visited.map((p) => (
+          <View key={p.id} style={styles.nearby}>
+            <Text style={styles.exitLabel}>
+              {p.name}
+              {p.here ? '  · you are here' : ''}
+            </Text>
+            {p.within ? <Text style={styles.exitMeta}>{p.within}</Text> : null}
+            <Notes notes={p.notes} />
+          </View>
+        ))
+      )}
+
+      <Text style={styles.section}>Heard of, not yet visited ({map.known.length})</Text>
+      {map.known.length === 0 ? (
+        <Text style={styles.muted}>No one has told you of anywhere else yet.</Text>
+      ) : (
+        map.known.map((p) => (
+          <View key={p.id} style={styles.nearby}>
+            <Text style={styles.exitLabel}>{p.name}</Text>
+            {p.within ? <Text style={styles.exitMeta}>{p.within}</Text> : null}
+            <Notes notes={p.notes} />
+          </View>
+        ))
+      )}
     </ScrollView>
   );
 }
@@ -162,10 +188,34 @@ const styles = StyleSheet.create({
     color: theme.colors.accent,
     fontSize: 14,
     fontWeight: '700',
+    marginTop: theme.spacing.sm,
     marginBottom: theme.spacing.sm,
   },
   muted: {
     color: theme.colors.textMuted,
+    marginBottom: theme.spacing.md,
+  },
+  chainRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: theme.spacing.sm,
+    paddingVertical: 2,
+  },
+  chainLevel: {
+    color: theme.colors.textMuted,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    width: 64,
+  },
+  chainName: {
+    color: theme.colors.text,
+    fontSize: 14,
+  },
+  chainHere: {
+    color: theme.colors.accent,
+    fontSize: 17,
+    fontWeight: '700',
   },
   nearby: {
     borderWidth: 1,

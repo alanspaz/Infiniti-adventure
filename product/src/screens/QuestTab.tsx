@@ -1,148 +1,83 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { partitionQuests } from '../../engine';
+import { ScrollView, Text, View } from 'react-native';
+import { selectQuestTab, type QuestTabEntry } from '../../engine';
 import { useCampaignState } from '../campaign';
-import { theme } from '../theme';
+import { Card, Section, kit } from './infoTabKit';
+
+const KIND_LABEL: Record<string, string> = {
+  given: 'Given',
+  known: 'Known',
+  lead: 'Lead',
+  done: 'Done',
+  failed: 'Failed',
+};
+
+function QuestCard({ e }: { e: QuestTabEntry }) {
+  const q = e.quest;
+  const status = q.status === 'active' ? 'Active' : q.status === 'done' ? 'Done' : 'Failed';
+  return (
+    <Card muted={q.status !== 'active'}>
+      <Text style={kit.title}>{q.title || 'Quest'}</Text>
+      <Text style={q.status === 'active' ? kit.badge : kit.badgeMuted}>{status}</Text>
+      {e.giver ? <Text style={kit.meta}>From {e.giver}</Text> : null}
+      {q.summary ? <Text style={kit.body}>{q.summary}</Text> : null}
+      {e.nextLead ? <Text style={kit.body}>Next: {e.nextLead}</Text> : null}
+      {e.rewards.length ? (
+        <Text style={kit.meta}>
+          {q.status === 'done' ? 'Earned' : 'Reward'}: {e.rewards.join(', ')}
+        </Text>
+      ) : null}
+      {e.journal.length ? (
+        <View style={kit.notes}>
+          {e.journal.map((j, i) => (
+            <Text key={`${i}-${j.kind}`} style={kit.note}>
+              <Text style={kit.badgeMuted}>{KIND_LABEL[j.kind]} </Text>
+              {j.text}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+    </Card>
+  );
+}
 
 /**
- * Quest journal — reads CampaignState.quests ONLY (Q-01).
- * Must never crash on open (Base44 anti-pattern). Empty list is valid.
- * Shows active + done (failed listed separately when present).
+ * Quest journal (TABS-01) — a pure read of CampaignState through
+ * selectQuestTab (quests + the chronicle's per-quest journal; built on
+ * partitionQuests). Never crashes on open; an empty list is valid.
  */
 export function QuestTab() {
   const { state } = useCampaignState();
-  const { active, done, failed } = partitionQuests(state.quests);
+  const { active, done, failed } = selectQuestTab(state);
   const total = active.length + done.length + failed.length;
 
   return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.root}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text style={styles.subtitle}>{state.title}</Text>
-
+    <ScrollView style={kit.scroll} contentContainerStyle={kit.root} keyboardShouldPersistTaps="handled">
+      <Text style={kit.hint}>{state.title}</Text>
       {total === 0 ? (
-        <View style={styles.card}>
-          <Text style={styles.emptyTitle}>No quests yet</Text>
-          <Text style={styles.emptyBody}>
-            Your journal is quiet for now. Objectives will appear here when the
-            adventure gives you something to chase.
+        <Card>
+          <Text style={kit.emptyTitle}>No quests yet</Text>
+          <Text style={kit.emptyBody}>
+            Your journal is quiet for now. Objectives will appear here when the adventure gives you
+            something to chase.
           </Text>
-        </View>
+        </Card>
       ) : (
         <>
-          {active.length > 0 ? (
-            <Text style={styles.section}>Active ({active.length})</Text>
-          ) : null}
-          {active.map((q) => (
-            <View key={q.id || q.title} style={styles.card}>
-              <Text style={styles.questTitle}>{q.title || 'Quest'}</Text>
-              <Text style={styles.badge}>Active</Text>
-              {q.summary ? <Text style={styles.body}>{q.summary}</Text> : null}
-              {q.progressNotes ? (
-                <Text style={styles.notes}>Progress: {q.progressNotes}</Text>
-              ) : null}
-            </View>
+          {active.length > 0 ? <Section>Active ({active.length})</Section> : null}
+          {active.map((e) => (
+            <QuestCard key={e.quest.id} e={e} />
           ))}
-
-          {done.length > 0 ? (
-            <Text style={styles.section}>Done ({done.length})</Text>
-          ) : null}
-          {done.map((q) => (
-            <View key={q.id || q.title} style={styles.card}>
-              <Text style={styles.questTitle}>{q.title || 'Quest'}</Text>
-              <Text style={styles.badgeMuted}>Done</Text>
-              {q.summary ? <Text style={styles.body}>{q.summary}</Text> : null}
-              {q.progressNotes ? (
-                <Text style={styles.notes}>Progress: {q.progressNotes}</Text>
-              ) : null}
-            </View>
+          {done.length > 0 ? <Section>Done ({done.length})</Section> : null}
+          {done.map((e) => (
+            <QuestCard key={e.quest.id} e={e} />
           ))}
-
-          {failed.length > 0 ? (
-            <Text style={styles.section}>Failed ({failed.length})</Text>
-          ) : null}
-          {failed.map((q) => (
-            <View key={q.id || q.title} style={styles.card}>
-              <Text style={styles.questTitle}>{q.title || 'Quest'}</Text>
-              <Text style={styles.badgeMuted}>Failed</Text>
-              {q.summary ? <Text style={styles.body}>{q.summary}</Text> : null}
-            </View>
+          {failed.length > 0 ? <Section>Failed ({failed.length})</Section> : null}
+          {failed.map((e) => (
+            <QuestCard key={e.quest.id} e={e} />
           ))}
         </>
       )}
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: theme.colors.surface },
-  root: {
-    padding: theme.spacing.lg,
-    paddingBottom: theme.spacing.xl,
-  },
-  subtitle: {
-    color: theme.colors.textMuted,
-    fontSize: 13,
-    marginBottom: theme.spacing.md,
-  },
-  section: {
-    color: theme.colors.accent,
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: theme.spacing.sm,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  card: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.background,
-    borderRadius: 12,
-    padding: theme.spacing.lg,
-    marginBottom: theme.spacing.sm,
-  },
-  emptyTitle: {
-    color: theme.colors.accent,
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: theme.spacing.xs,
-  },
-  emptyBody: {
-    color: theme.colors.textMuted,
-    fontSize: 14,
-    lineHeight: 21,
-  },
-  questTitle: {
-    color: theme.colors.text,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  badge: {
-    color: theme.colors.accent,
-    fontSize: 11,
-    fontWeight: '700',
-    marginTop: 4,
-    textTransform: 'uppercase',
-  },
-  badgeMuted: {
-    color: theme.colors.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    marginTop: 4,
-    textTransform: 'uppercase',
-  },
-  body: {
-    color: theme.colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: theme.spacing.sm,
-  },
-  notes: {
-    color: theme.colors.text,
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: theme.spacing.xs,
-  },
-});

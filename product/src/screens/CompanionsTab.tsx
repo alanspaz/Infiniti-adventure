@@ -1,97 +1,66 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
+import { selectCompanionsTab } from '../../engine';
 import { useCampaignState } from '../campaign';
-import { theme } from '../theme';
+import { Card, Notes, Section, kit } from './infoTabKit';
+
+const ROLE_LABEL = { companion: 'Companion · 1 slot', escort: 'Escort · free', pet: 'Pet · ½ slot' } as const;
+
+function slotsText(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
 
 /**
- * Companions panel — empty-party-friendly; never auto-spawns.
- * Reads CampaignState.companions only (party.slice(1)).
+ * Companions (TABS-01) — party slots + people you've met, read from
+ * CampaignState via selectCompanionsTab. Never auto-spawns; joining stays
+ * parked (C-01), so nothing here adds anyone.
  */
 export function CompanionsTab() {
   const { state } = useCampaignState();
-  const companions = Array.isArray(state.companions) ? state.companions : [];
+  const tab = selectCompanionsTab(state);
 
   return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.root}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text style={styles.hint}>
-        Companions are never added for you. You travel alone unless you form a
-        party.
+    <ScrollView style={kit.scroll} contentContainerStyle={kit.root} keyboardShouldPersistTaps="handled">
+      <Section>
+        Party · {slotsText(tab.slotsUsed)}/{tab.slotsTotal} slots
+      </Section>
+      <Text style={kit.hint}>
+        A party is you plus up to {tab.slotsTotal} companions. Escorts don't take a slot; pets take half.
       </Text>
-
-      {companions.length === 0 ? (
-        <View style={styles.card}>
-          <Text style={styles.emptyTitle}>You travel alone</Text>
-          <Text style={styles.emptyBody}>
-            No companions walk beside you yet. When you invite someone to join,
-            they will appear here.
+      {tab.members.length === 0 ? (
+        <Card>
+          <Text style={kit.emptyTitle}>You travel alone</Text>
+          <Text style={kit.emptyBody}>
+            No companions walk beside you yet. Companions are never added for you.
           </Text>
-        </View>
+        </Card>
       ) : (
-        companions.map((c) => (
-          <View key={c.id} style={styles.card}>
-            <Text style={styles.name}>{c.name}</Text>
-            <Text style={styles.meta}>
-              {c.className} · Level {c.level}
+        tab.members.map(({ member, role }) => (
+          <Card key={member.id}>
+            <Text style={kit.title}>{member.name}</Text>
+            <Text style={kit.meta}>
+              {member.className} · Level {member.level} · {ROLE_LABEL[role]}
             </Text>
-            {c.description ? (
-              <Text style={styles.body}>{c.description}</Text>
-            ) : null}
-          </View>
+            {member.description ? <Text style={kit.body}>{member.description}</Text> : null}
+          </Card>
+        ))
+      )}
+
+      <Section>People you've met ({tab.npcs.length})</Section>
+      {tab.npcs.length === 0 ? (
+        <Text style={kit.muted}>No one yet. The people you meet in the Tale are noted here.</Text>
+      ) : (
+        tab.npcs.map((n) => (
+          <Card key={n.id}>
+            <Text style={kit.title}>{n.name}</Text>
+            {n.role ? <Text style={kit.meta}>{n.role}</Text> : null}
+            {n.lastSeenName ? <Text style={kit.meta}>Last seen: {n.lastSeenName}</Text> : null}
+            <View>
+              <Notes notes={n.notes} />
+            </View>
+          </Card>
         ))
       )}
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: theme.colors.surface },
-  root: {
-    padding: theme.spacing.lg,
-    paddingBottom: theme.spacing.xl,
-  },
-  hint: {
-    color: theme.colors.textMuted,
-    fontSize: 13,
-    lineHeight: 19,
-    marginBottom: theme.spacing.md,
-  },
-  card: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.background,
-    borderRadius: 12,
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.sm,
-  },
-  emptyTitle: {
-    color: theme.colors.accent,
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: theme.spacing.xs,
-  },
-  emptyBody: {
-    color: theme.colors.textMuted,
-    fontSize: 14,
-    lineHeight: 21,
-  },
-  name: {
-    color: theme.colors.text,
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  meta: {
-    color: theme.colors.textMuted,
-    fontSize: 13,
-    marginTop: 2,
-  },
-  body: {
-    color: theme.colors.text,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: theme.spacing.sm,
-  },
-});

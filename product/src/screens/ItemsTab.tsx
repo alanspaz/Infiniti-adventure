@@ -6,7 +6,9 @@ import {
   itemTraits,
   merchantForLocation,
   safeInventory,
+  selectGearTab,
   starterKitPatch,
+  type GearOrigin,
   type InventoryItem,
   type ItemActionRequest,
 } from '../../engine';
@@ -18,6 +20,8 @@ import { theme } from '../theme';
  * P-INT-01: inspect / use / equip / move / drop — every change is a
  * CampaignState patch via runItemAction (no panel-local copies).
  * Use / equip / drop also append a narrator beat to the Tale.
+ * TABS-01: equipped slots + where/how each item was obtained and its
+ * inspected lore, all read from CampaignState via selectGearTab.
  */
 export function ItemsTab() {
   const { state, runItemAction, applyPatch, openShop } = useCampaignState();
@@ -26,6 +30,9 @@ export function ItemsTab() {
   const inv = safeInventory(state.inventory);
   const gold = inv.gold;
   const items = inv.items;
+  const gear = selectGearTab(state);
+  const originOf = (id: string): GearOrigin | null =>
+    [...gear.equipped, ...gear.pack].find((i) => i.id === id)?.origin ?? null;
   const pcName = state.character?.name ?? 'your pack';
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmDropId, setConfirmDropId] = useState<string | null>(null);
@@ -81,6 +88,18 @@ export function ItemsTab() {
         </Pressable>
       ) : null}
 
+      <View style={styles.card}>
+        <Text style={styles.slotsTitle}>Equipped</Text>
+        {gear.slots.map((sl) => (
+          <View key={sl.slot} style={styles.slotRow}>
+            <Text style={styles.slotLabel}>{sl.label}</Text>
+            <Text style={styles.slotValue}>
+              {sl.item ? `${sl.item.name}${sl.detail ? ` · ${sl.detail}` : ''}` : sl.detail}
+            </Text>
+          </View>
+        ))}
+      </View>
+
       {feedback ? (
         <Text
           style={[styles.feedback, !feedback.ok && styles.feedbackMuted]}
@@ -114,11 +133,15 @@ export function ItemsTab() {
             item={it}
             index={idx}
             count={items.length}
+            origin={originOf(it.id)}
             selected={selectedId === it.id}
             confirmDrop={confirmDropId === it.id}
             onToggle={() => {
               setConfirmDropId(null);
-              setSelectedId((cur) => (cur === it.id ? null : it.id));
+              const opening = selectedId !== it.id;
+              setSelectedId(opening ? it.id : null);
+              // TABS-01: inspecting records the item's lore (no turn, no beat).
+              if (opening) runItemAction({ kind: 'inspect', itemId: it.id });
             }}
             onRun={run}
             onAskDrop={() => setConfirmDropId(it.id)}
@@ -131,6 +154,7 @@ export function ItemsTab() {
 
 function ItemRow({
   item,
+  origin,
   index,
   count,
   selected,
@@ -140,6 +164,7 @@ function ItemRow({
   onAskDrop,
 }: {
   item: InventoryItem;
+  origin: GearOrigin | null;
   index: number;
   count: number;
   selected: boolean;
@@ -170,14 +195,15 @@ function ItemRow({
         <View style={styles.rowText}>
           <Text style={styles.itemName}>{item.name || 'Item'}</Text>
           <Text style={styles.itemMeta}>{meta}</Text>
+          {origin ? <Text style={styles.itemOrigin}>{origin.line}</Text> : null}
         </View>
         {item.equipped ? <Text style={styles.badge}>Equipped</Text> : null}
       </Pressable>
 
       {selected ? (
         <View style={styles.detail}>
-          {/* Inspect = read-only describe from state. */}
-          <Text style={styles.detailBody}>{describeItem(item)}</Text>
+          {/* Inspect: describe from state (lore recorded once in the chronicle). */}
+          <Text style={styles.detailBody}>{origin?.lore ?? describeItem(item)}</Text>
           <View style={styles.actions}>
             {traits.effect ? (
               <ActionBtn label="Use" onPress={() => onRun({ kind: 'use', itemId: item.id })} />
@@ -267,6 +293,18 @@ function ActionBtn({
 }
 
 const styles = StyleSheet.create({
+  slotsTitle: {
+    color: theme.colors.accent,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  slotRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2, gap: 8 },
+  slotLabel: { color: theme.colors.textMuted, fontSize: 14 },
+  slotValue: { color: theme.colors.text, fontSize: 14, fontWeight: '600', flexShrink: 1, textAlign: 'right' },
+  itemOrigin: { color: theme.colors.textMuted, fontSize: 12, fontStyle: 'italic', marginTop: 2 },
   scroll: { flex: 1, backgroundColor: theme.colors.surface },
   root: {
     padding: theme.spacing.lg,
