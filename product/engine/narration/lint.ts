@@ -34,7 +34,11 @@ export type ProseLintOptions = {
   /** Extra allowed names (party, people here, foes, items). */
   allowNames?: readonly string[];
   verbosity?: 'short' | 'standard' | 'lush';
-  /** Terms always allowed, even if they hit the banned list (the player's own class name). */
+  /**
+   * Exact strings always allowed, even if they hit the banned list (the player's own class name).
+   * Only the whole string is exempt (case-insensitive): 'Beholder-hunter' passes, a separate
+   * 'beholder' or 'beholders' elsewhere in the reply still fails.
+   */
   allowTerms?: readonly string[];
 };
 
@@ -54,7 +58,7 @@ export function proseLintIssues(text: string, opts: ProseLintOptions = {}): stri
   let scan = t;
   for (const term of opts.allowTerms ?? []) {
     const w = term.trim();
-    if (w) scan = scan.replace(new RegExp(`(?<!\\w)${escapeRe(w)}(?:e?s)?(?!\\w)`, 'gi'), ' ');
+    if (w) scan = scan.replace(new RegExp(`(?<![\\w-])${escapeRe(w)}(?![\\w-])`, 'gi'), ' ');
   }
   const banned = scan.match(BANNED_PROSE_RE);
   if (banned) issues.push(`banned:${banned[0]}`);

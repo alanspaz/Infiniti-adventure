@@ -467,6 +467,11 @@ describe('narrator provider', () => {
     assert.match(cleric.prose, /Cleric/);
     const custom = await ask('The Mind Flayer Hunter in you notes every shadow by the hearth.', 'Mind Flayer Hunter');
     assert.equal(custom.source, 'remote');
+    const hunter = await ask('The Beholder-hunter in you counts the exits by the hearth.', 'Beholder-hunter');
+    assert.equal(hunter.source, 'remote');
+    const stray = await ask('The Beholder-hunter in you thinks of beholders by the hearth.', 'Beholder-hunter');
+    assert.equal(stray.guardFallback, true);
+    assert.doesNotMatch(stray.prose, /beholder/i);
     const ip = await ask('The benches here remind you of an inn in Waterdeep.', 'Cleric');
     assert.equal(ip.guardFallback, true);
     assert.doesNotMatch(ip.prose, /Waterdeep/);

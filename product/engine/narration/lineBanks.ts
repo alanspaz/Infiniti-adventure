@@ -2333,3 +2333,15 @@ export const ARRIVE_FROM_INSIDE: Partial<Record<NodeId, Bank>> = {
     { id: 'arr.in.moss.al.2', when: { pack: 'ash-ledger' }, lead: `You step away from the counter. Mossglass keeps its quiet, and its prices.` },
   ],
 };
+
+/** NARR-04 addendum 01 · common room → Kettle threshold (the from-inside Kettle lines are cellar-only). */
+export const ARRIVE_FROM_COMMON_ROOM: Partial<Record<NodeId, Bank>> = {
+  'place.copper-kettle': [
+    { id: 'arr.cr.kettle.0', lead: `You leave the benches and the hearth behind and step out to the threshold. The street noise reaches you through the open door.` },
+    { id: 'arr.cr.kettle.1', lead: `Past the long bar and out to the front of the Kettle, where the warm air meets the draught from the street.` },
+    { id: 'arr.cr.kettle.2', lead: `You slip out of the common room's chatter. At the threshold, the town waits just beyond the door.` },
+    { id: 'arr.cr.kettle.al.0', when: { pack: 'ash-ledger' }, lead: `You leave the common room's low talk behind. At the threshold, the street door lets in cold air and grey light.` },
+    { id: 'arr.cr.kettle.al.1', when: { pack: 'ash-ledger' }, lead: `You step out from the benches to the front of the Kettle. A few drinkers watch you go and then look back at their cups.` },
+    { id: 'arr.cr.kettle.al.2', when: { pack: 'ash-ledger' }, lead: `Out of the warmth and onto the threshold. Whatever you owe out there, the street is where you settle it.` },
+  ],
+};

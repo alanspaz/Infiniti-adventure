@@ -202,7 +202,8 @@ describe('scene adventure loop', () => {
     assert.ok(leave.travel);
     assert.equal(leave.travel!.via, 'parent-leave');
     assert.equal(leave.campaign.session.locationId, 'place.copper-kettle');
-    assert.match(leave.prose, /Kettle/);
+    // Common room → Kettle uses the ARRIVE_FROM_COMMON_ROOM bank (not every line names the inn).
+    assert.match(leave.prose, /Kettle|common room|benches|threshold/);
 
     camp = leave.campaign;
     const outside = await resolveSceneBeat({

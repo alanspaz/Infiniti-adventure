@@ -86,6 +86,8 @@ export type NarratorPromptFacts = {
   recentEvent?: RecentEvent | null;
   activeQuest?: string | null;
   playerDid?: string | null;
+  /** Set when travel moved from a child room straight up to its parent. */
+  arrivedFrom?: { name: string; inside: boolean } | null;
   mechanicsApplied?: string | null;
 };
 
@@ -107,6 +109,7 @@ export function buildNarratorUserMessage(f: NarratorPromptFacts): string {
   const place = label?.ref ?? f.placeName ?? null;
   if (place) lines.push(`PLACE: ${place}`);
   if (f.placeDetail?.trim()) lines.push(`PLACE DETAIL: ${f.placeDetail.trim()}`);
+  if (f.arrivedFrom) lines.push(`ARRIVED FROM: ${f.arrivedFrom.name}${f.arrivedFrom.inside ? ' (inside)' : ''}`);
   if (f.waysOn && f.waysOn.length) lines.push(`WAYS ON (describe in prose, never list): ${f.waysOn.join('; ')}`);
   if (f.hearth) lines.push(`PLACE STATE: ${HEARTH_LABEL[f.hearth]}`);
   if (f.peopleHere && f.peopleHere.length) {

@@ -35,6 +35,8 @@ import {
 import * as B from './narration/lineBanks';
 import { BANNED_PROSE_RE, KNOWN_TOKENS, proseLintIssues } from './narration/lint';
 import { Voice } from './narration/voice';
+import { buildNarratorUserMessage } from './narration/remotePrompt';
+import { promptFactsFor } from './narrator';
 
 type L = B.Line;
 const st = (c: CampaignSave) => campaignToState(c);
@@ -501,6 +503,11 @@ describe('NARR-04 follow-ups', () => {
     // A custom class that happens to contain an IP word is still the player's own.
     assert.deepEqual(proseLintIssues('You grip your blade the way a beholder-hunter should.', { allowTerms: ['Beholder-hunter'] }), []);
     assert.ok(proseLintIssues('You grip your blade. A beholder watches.', { allowTerms: ['Beholder-hunter'] }).some((i) => i.startsWith('banned')));
+    // Only the exact class string is exempt: plurals or a bare IP word elsewhere still fail.
+    const opts = { allowTerms: ['Beholder-hunter'] };
+    assert.deepEqual(proseLintIssues('The Beholder-hunter in you counts the exits.', opts), []);
+    assert.ok(proseLintIssues('The Beholder-hunter in you counts the beholders.', opts).some((i) => i.startsWith('banned')));
+    assert.ok(proseLintIssues('Beholder-hunters are rare in Emberford.', opts).some((i) => i.startsWith('banned')));
   });
 
   it('cellar → Kettle uses a from-inside arrival, without repeating; common room → Kettle does not', async () => {
@@ -520,11 +527,27 @@ describe('NARR-04 follow-ups', () => {
     assert.notEqual(seen[0], seen[1]);
     assert.notEqual(seen[1], seen[2]);
 
-    const common = hero('interior.kettle-common', []);
-    const out = await resolveSceneBeat({ campaign: common, playerAction: 'leave', beat: 'custom', map, rng: createSeededRng(3), forceCheck: null });
-    assert.equal(st(out.campaign).locationId, 'place.copper-kettle');
-    assert.equal(st(out.campaign).flags['narr.last.arrival.inside.place.copper-kettle'], undefined);
-    assert.match(String(st(out.campaign).flags['narr.last.arrival.place.copper-kettle']), /^arr\.kettle\./);
+    // Common room → Kettle uses ARRIVE_FROM_COMMON_ROOM, never the cellar lines, and doesn't repeat.
+    const crSeen: string[] = [];
+    const packIds: string[] = [];
+    for (const pack of ['hearthlight', 'ash-ledger'] as const) {
+      let cr: CampaignSave = { ...hero('interior.kettle-common', []), playstylePackId: pack };
+      for (let i = 0; i < 3; i++) {
+        const out = await resolveSceneBeat({ campaign: cr, playerAction: 'leave', beat: 'custom', map, rng: createSeededRng(i + 3), forceCheck: null });
+        assert.equal(st(out.campaign).locationId, 'place.copper-kettle');
+        const f = st(out.campaign).flags;
+        const id = String(f['narr.last.arrival.common.place.copper-kettle'] ?? '');
+        assert.match(id, /^arr\.cr\.kettle\./);
+        const line = B.ARRIVE_FROM_COMMON_ROOM['place.copper-kettle']!.find((l) => l.id === id)!;
+        assert.ok(!line.when?.pack || line.when.pack === pack);
+        assert.ok(out.prose.startsWith(line.lead));
+        if (i > 0) assert.notEqual(id, crSeen.at(-1));
+        crSeen.push(id);
+        if (pack === 'ash-ledger') packIds.push(id);
+        cr = applyCampaignPatch(out.campaign, { locationId: 'interior.kettle-common' });
+      }
+    }
+    assert.equal(packIds.length, 3);
   });
 
   it('forge floor → Brightanvil and counter → Mossglass use from-inside lines', async () => {
@@ -568,5 +591,21 @@ describe('NARR-04 follow-ups', () => {
       const beats = st(back).storyBeats;
       assert.equal(beats.filter((b) => b.actionHint).length, 1);
     }
+  });
+
+  it('remote user message names the room when arriving from inside', () => {
+    const req = (from: string, to: string, name: string) => ({
+      beat: 'custom' as const,
+      locationId: from,
+      travelOutcome: { kind: 'arrived' as const, place: { name, description: '', nearby: [] }, toNodeId: to },
+    });
+    const cellarUp = buildNarratorUserMessage(promptFactsFor(req('interior.kettle-cellar', 'place.copper-kettle', 'The Copper Kettle') as never, 'arrival'));
+    assert.match(cellarUp, /^ARRIVED FROM: Inn Cellar \(inside\)$/m);
+    const forgeUp = buildNarratorUserMessage(promptFactsFor(req('interior.smith-forge', 'place.brightanvil', 'Brightanvil Smithy') as never, 'arrival'));
+    assert.match(forgeUp, /ARRIVED FROM: .+ \(inside\)/);
+    const down = buildNarratorUserMessage(promptFactsFor(req('place.copper-kettle', 'interior.kettle-cellar', 'Inn Cellar') as never, 'arrival'));
+    assert.doesNotMatch(down, /ARRIVED FROM/);
+    const across = buildNarratorUserMessage(promptFactsFor(req('locale.emberford', 'locale.ashen-fields', 'Ashen Fields') as never, 'arrival'));
+    assert.doesNotMatch(across, /ARRIVED FROM/);
   });
 });

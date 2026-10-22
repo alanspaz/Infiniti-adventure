@@ -3,6 +3,7 @@ import { tryLoadPlaystylePack } from './pack';
 import {
   ARRIVAL,
   ARRIVE_FROM_INSIDE,
+  ARRIVE_FROM_COMMON_ROOM,
   CONTINUE,
   CUSTOM,
   HEARTH_STATE,
@@ -17,6 +18,7 @@ import {
   WHERE_AM_I,
   WHERE_AM_I_COMBAT,
   WHERE_AM_I_FALLBACK,
+  type Bank,
   type NodeId,
   type TokenValues,
 } from './narration/lineBanks';
@@ -323,7 +325,7 @@ let starterGraph: MapGraph | null = null;
 /**
  * NARR-04 addendum 01: the source rooms each from-inside arrival bank describes. The Kettle lines
  * are written for coming up from the cellar (stairs, cellar smell), so the common room keeps the
- * ordinary Kettle arrival.
+ * common-room bank (ARRIVE_FROM_COMMON_ROOM).
  */
 const FROM_INSIDE_SOURCES: Partial<Record<string, readonly string[]>> = {
   'place.copper-kettle': ['interior.kettle-cellar'],
@@ -332,11 +334,35 @@ const FROM_INSIDE_SOURCES: Partial<Record<string, readonly string[]>> = {
 };
 
 /** Travel from a child node (interior/floor) up to its parent building, with copy for that room. */
+/** Travel from a child node (interior/floor) straight up to its parent. */
+export function isChildToParent(fromId: string | null, toId: string | null): boolean {
+  if (!fromId || !toId) return false;
+  starterGraph ??= createStarterMap();
+  return starterGraph.nodes[fromId]?.parentId === toId;
+}
+
+/** The map name of a node ("Inn Cellar"), or null. */
+function nodeName(id: string | null): string | null {
+  if (!id) return null;
+  starterGraph ??= createStarterMap();
+  return starterGraph.nodes[id]?.name ?? null;
+}
+
+/** Travel from a child node up to its parent building, with copy for that room. */
 export function isArrivalFromInside(fromId: string | null, toId: string | null): boolean {
   if (!fromId || !toId || !ARRIVE_FROM_INSIDE[toId as NodeId]) return false;
   if (!FROM_INSIDE_SOURCES[toId]?.includes(fromId)) return false;
-  starterGraph ??= createStarterMap();
-  return starterGraph.nodes[fromId]?.parentId === toId;
+  return isChildToParent(fromId, toId);
+}
+
+/** The from-inside arrival bank (and its anti-repeat path) for this move, if any. */
+function insideArrival(fromId: string | null, toId: string | null): { path: string; bank: Bank } | null {
+  if (!toId) return null;
+  if (fromId === 'interior.kettle-common' && isChildToParent(fromId, toId) && ARRIVE_FROM_COMMON_ROOM[toId as NodeId]) {
+    return { path: `arrival.common.${toId}`, bank: ARRIVE_FROM_COMMON_ROOM[toId as NodeId]! };
+  }
+  if (isArrivalFromInside(fromId, toId)) return { path: `arrival.inside.${toId}`, bank: ARRIVE_FROM_INSIDE[toId as NodeId]! };
+  return null;
 }
 
 /** NARR-04 stub: every line comes from lineBanks via the seeded voice. */
@@ -383,13 +409,9 @@ export function resolveStubProse(request: NarratorSceneRequest): StubProse {
       promptBeat = 'arrival';
       const toId = travel.toNodeId ?? null;
       const values: TokenValues = { ...base, place: placeRefFor(toId, placeRef(travel.place.name)) };
-      const fromInside = isArrivalFromInside(here, toId);
-      const banks = [
-        fromInside ? ARRIVE_FROM_INSIDE[toId as NodeId] : undefined,
-        toId ? ARRIVAL[toId as NodeId] : undefined,
-        WHERE_AM_I_FALLBACK,
-      ];
-      const path = fromInside ? `arrival.inside.${toId}` : `arrival.${toId ?? 'any'}`;
+      const inside = insideArrival(here, toId);
+      const banks = [inside?.bank, toId ? ARRIVAL[toId as NodeId] : undefined, WHERE_AM_I_FALLBACK];
+      const path = inside?.path ?? `arrival.${toId ?? 'any'}`;
       const parts: string[] = [say(path, banks, values, toId) ?? STUB_SAFE_PROSE];
       if (request.questBeats?.progressAtDoor) {
         const p = say('quest.firstSteps.progress', QUEST_FIRST_STEPS_MORE.progress, values);
@@ -617,6 +639,10 @@ export function promptFactsFor(request: NarratorSceneRequest, beat: PromptBeat):
     companions: request.partyNames ?? [],
     inCombatWith: request.inCombatWith ? foeArticled(request.inCombatWith) : null,
     playerDid: f.playerDid ?? (request.playerAction ? detectActionFlavor(request.playerAction) : beat),
+    arrivedFrom:
+      travel?.kind === 'arrived' && isChildToParent(request.locationId ?? null, locationId)
+        ? { name: nodeName(request.locationId ?? null) ?? 'inside', inside: true }
+        : null,
     ...f,
   };
 }
