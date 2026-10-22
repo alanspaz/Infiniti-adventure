@@ -420,7 +420,7 @@ export function questOpeningBeats(
   if (q.progressNotes) out.push({ questId: q.id, kind: 'lead', text: q.progressNotes });
   const trigger = arrivalTrigger(q.id);
   const where = mapNodeName(trigger);
-  if (where) out.push({ questId: q.id, kind: 'lead', text: `Reach ${where} to see it through.` });
+  if (where) out.push({ questId: q.id, kind: 'lead', text: `Step out into ${where} to see it through.` });
   return out;
 }
 

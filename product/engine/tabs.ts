@@ -331,7 +331,7 @@ export function selectQuestTab(state: CampaignState): QuestTab {
       nextLead:
         q.status !== 'active'
           ? null
-          : (leads[leads.length - 1]?.text ?? q.progressNotes ?? (trigger ? `Reach ${mapNodeName(trigger)}` : null)),
+          : (leads[leads.length - 1]?.text ?? q.progressNotes ?? (trigger ? `Step out into ${mapNodeName(trigger)}` : null)),
       journal,
     };
   };
