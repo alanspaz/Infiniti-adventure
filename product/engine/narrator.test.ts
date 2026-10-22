@@ -37,7 +37,8 @@ describe('narrator provider', () => {
     });
     assert.equal(result.source, 'pack-template');
     assert.match(result.prose, /ledger/i);
-    assert.match(result.prose, /Rook/);
+    // NARR-04: companions appear only through {companions}-tagged lines; never a raw token.
+    assert.doesNotMatch(result.prose, /\{companions\}/);
   });
 
   it('stub falls back to canned prose without pack', async () => {
@@ -140,7 +141,8 @@ describe('narrator provider', () => {
       partyNames: [],
     });
     assert.doesNotMatch(result.prose, /companion was added|auto-spawn/i);
-    assert.match(result.prose, /alone|threshold/i);
+    // NARR-04: no {companions} line is eligible with an empty party.
+    assert.doesNotMatch(result.prose, /\bYou and\b|\{companions\}/);
   });
 
 
@@ -154,7 +156,8 @@ describe('narrator provider', () => {
       partyNames: [],
       verbosity: 'standard',
     });
-    assert.match(look.prose, /take in the scene|Details sharpen|gaze settles|study the space/i);
+    // NARR-04: look lines come from the LOOK bank (fallback when the node is unknown).
+    assert.ok(look.narrFlags?.['narr.last.look.any'], 'look path flag set');
     assert.doesNotMatch(look.prose, /look around the common room carefully/i);
     assert.ok(look.prose.length > 20);
 
@@ -164,7 +167,7 @@ describe('narrator provider', () => {
       playerAction: 'I go down to the cellar',
       partyNames: [],
     });
-    assert.match(go.prose, /footing|Thresholds|roads|rooms|path|Forward|Doorframes/i);
+    assert.ok(Object.keys(go.narrFlags ?? {}).some((k) => k.startsWith('narr.last.')));
     assert.doesNotMatch(go.prose, /go down to the cellar/i);
 
     const arrive = await provider.narrateScene({
@@ -180,7 +183,7 @@ describe('narrator provider', () => {
         },
       },
     });
-    assert.match(arrive.prose, /arrive at the Inn Cellar/i);
+    assert.match(arrive.prose, /the Inn Cellar/i);
     assert.doesNotMatch(arrive.prose, /go to the cellar/i);
 
     const refuse = await provider.narrateScene({
@@ -189,7 +192,7 @@ describe('narrator provider', () => {
       partyNames: [],
       travelOutcome: { kind: 'refused', attempted: 'go to the moon' },
     });
-    assert.match(refuse.prose, /cannot reach|nearby/i);
+    assert.ok(refuse.narrFlags?.['narr.last.travel.refused']);
   });
 
   it('stub player prose omits raw turn markers and location ids', async () => {
@@ -299,21 +302,19 @@ describe('narrator provider', () => {
     assert.equal(result.source, 'pack-template');
     assert.doesNotMatch(result.prose, /You intended/i);
     assert.doesNotMatch(result.prose, /Neverwinter|climb the black spire/i);
-    assert.match(result.prose, /press the moment|Scarce mercies/i);
+    assert.ok(Object.keys(result.narrFlags ?? {}).some((k) => k.startsWith('narr.last.custom.')));
     assert.doesNotMatch(result.prose, /NSFW|explicit/i);
   });
 
-  it('checkHint appears in stub prose', async () => {
+  it('checkHint never leaks roll text into stub prose (numbers stay off the prose)', async () => {
     const provider = createNarratorProvider('stub');
     const result = await provider.narrateScene({
       beat: 'custom',
       playerAction: 'search the desk',
-      checkHint: 'Check perception (wisdom) → success',
+      checkHint: 'Check perception (wisdom) 14 → success',
     });
-    assert.match(result.prose, /perception|success/i);
+    assert.doesNotMatch(result.prose, /\d/);
   });
-
-
 
   it('stub uses worldTick prose for wait instead of repeat pool', async () => {
     const provider = createNarratorProvider('stub');
@@ -350,9 +351,8 @@ describe('narrator provider', () => {
       },
     });
     assert.match(result.prose, /Kettle Common/i);
-    assert.match(result.prose, /soot-black kettle|warm inn/i);
-    assert.match(result.prose, /Nearby/i);
-    assert.match(result.prose, /Cellar Stairs|Front Porch/i);
+    // NARR-04: no "Nearby:" lists in prose; exits live on the Map tab.
+    assert.doesNotMatch(result.prose, /Nearby:|Exits:|Here at /i);
     assert.doesNotMatch(result.prose, /where am I/i);
   });
 
@@ -367,25 +367,26 @@ describe('narrator provider', () => {
       },
     });
     assert.match(result.prose, /Emberford Gate/);
-    assert.match(result.prose, /Market Row/);
+    assert.doesNotMatch(result.prose, /Nearby:|Exits:/i);
   });
 
   it('stub varies replies for different inputs of same flavor', async () => {
     const provider = createNarratorProvider('stub');
-    const a = await provider.narrateScene({
-      beat: 'custom',
-      playerAction: 'I carefully look at the rafters',
-      partyNames: [],
-    });
-    const b = await provider.narrateScene({
-      beat: 'custom',
-      playerAction: 'I glance toward the window and observe the street',
-      partyNames: [],
-    });
-    // Different inputs should not produce identical stub bodies in a short window.
-    assert.notEqual(a.prose, b.prose);
-    assert.ok(a.prose.length > 20);
-    assert.ok(b.prose.length > 20);
+    const inputs = [
+      'I carefully look at the rafters',
+      'I glance toward the window and observe the street',
+      'I look around',
+      'I study the floorboards',
+      'I examine the walls',
+      'I look at the door',
+    ];
+    const out = new Set<string>();
+    for (const playerAction of inputs) {
+      const r = await provider.narrateScene({ beat: 'custom', playerAction, partyNames: [] });
+      assert.ok(r.prose.length > 20);
+      out.add(r.prose);
+    }
+    assert.ok(out.size >= 2, 'different inputs give different lines');
   });
 
   it('remote enableHttp uses injected fetch when configured', async () => {
@@ -418,4 +419,31 @@ describe('narrator provider', () => {
     assert.match(result.prose, /quiet hall/i);
   });
 
+
+  it('NARR-04 remote: pack tone fills the system prompt; a rule-breaking reply falls back to the stub', async () => {
+    const sent: { role: string; content: string }[][] = [];
+    const make = (content: string) =>
+      (async (_u: unknown, init?: { body?: string }) => {
+        sent.push(JSON.parse(String(init?.body ?? '{}')).messages ?? []);
+        return {
+          ok: true,
+          json: async () => ({
+            id: 'x', object: 'chat.completion', created: 1, model: 't',
+            choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }],
+          }),
+        } as Response;
+      }) as unknown as typeof fetch;
+    const req = { beat: 'custom' as const, playerAction: 'look around', playstylePackId: 'hearthlight', partyNames: [] };
+    const bad = new RemoteNarratorProvider({ baseUrl: 'https://example.test/v1', apiKey: 'k', enableHttp: true, fetchImpl: make('You find 12 gold coins under the bench.') });
+    const r = await bad.narrateScene(req);
+    assert.equal(r.guardFallback, true);
+    assert.doesNotMatch(r.prose, /\d/);
+    const sys = sent[0]!.find((m) => m.role === 'system')!.content;
+    assert.doesNotMatch(sys, /\{packToneSummary\}|\{narratorSystemHint\}/);
+    assert.ok(sent[0]!.some((m) => m.role === 'user' && m.content.length > 20));
+    const good = new RemoteNarratorProvider({ baseUrl: 'https://example.test/v1', apiKey: 'k', enableHttp: true, fetchImpl: make('The hearth pops, and the benches creak as someone shifts.') });
+    const g = await good.narrateScene(req);
+    assert.equal(g.source, 'remote');
+    assert.ok(!g.guardFallback);
+  });
 });

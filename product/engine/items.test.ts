@@ -79,7 +79,8 @@ describe('P-INT-01 use', () => {
     assert.equal(item(campaign, 'starter-healing-potion')?.qty, 1);
     assert.equal(s.storyBeats.length, beatsBefore + 1);
     const beat = s.storyBeats[s.storyBeats.length - 1]!;
-    assert.match(beat.prose, /3 HP restored/);
+    assert.match(beat.mechanicsLine ?? '', /\+3 HP/);
+    assert.doesNotMatch(beat.prose, /\d/);
     assert.equal(beat.playerLine, 'Use Healing potion');
   });
 
@@ -110,7 +111,8 @@ describe('P-INT-01 use', () => {
     const c = kitCampaign();
     const { campaign, result } = applyItemAction(c, { kind: 'use', itemId: 'starter-torch' });
     assert.equal(result.ok, false);
-    assert.equal(result.narration, null);
+    // NARR-04: Tale copy for routed input (no digits); the panel keeps the plain message.
+    assert.doesNotMatch(result.narration ?? '', /\d/);
     assert.equal(campaign, c);
     assert.match(result.message, /no use/);
   });

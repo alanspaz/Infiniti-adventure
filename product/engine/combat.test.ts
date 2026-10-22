@@ -185,7 +185,9 @@ describe('COMBAT-02 victory rewards', () => {
     assert.equal(s.progression.xp, 75);
     assert.equal(s.inventory.gold, 11);
     assert.equal(s.inventory.items.find((i) => i.id === 'dagger')?.qty, 1);
-    assert.match(s.storyBeats.at(-1)!.prose, /75 XP, 8 gold, Dagger/);
+    // NARR-04: numbers live on the mechanics line, never in prose.
+    assert.match(s.storyBeats.at(-1)!.mechanicsLine ?? '', /75 XP.*8 gold.*Dagger/);
+    assert.doesNotMatch(s.storyBeats.at(-1)!.prose, /\d/);
     // Rail actions after the fight do nothing.
     const stray = resolveCombatTurn(s, 'attack', dice());
     assert.equal(stray.ok, false);
@@ -202,7 +204,7 @@ describe('COMBAT-02 defeat recovery', () => {
     assert.equal(s.locationId, RECOVERY_LOCATION_ID);
     assert.equal(s.combat.hp, Math.floor(s.combat.maxHp! / 2));
     assert.equal(s.inventory.gold, 4);
-    assert.match(s.storyBeats.at(-1)!.prose, /Copper Kettle/);
+    assert.match(s.storyBeats.at(-1)!.prose, /Kettle/);
     // Zero gold: no spend, still fine.
     const broke = applyCombatTurn(fightCampaign({ hp: 1 }), 'attack', {
       rng: dice([2, 20], [15, 20], [6, 6]),
@@ -235,7 +237,8 @@ describe('COMBAT-02 Tale intents', () => {
     const s = st(r!.campaign);
     assert.equal(isCombatActive(s.combat), true);
     assert.ok(s.combat.foe);
-    assert.match(s.storyBeats.at(-1)!.prose, /squares up/);
+    assert.match(s.storyBeats.at(-1)!.prose, new RegExp(s.combat.foe!.name, 'i'));
+    assert.match(s.storyBeats.at(-1)!.mechanicsLine ?? '', /HP.*AC/);
   });
 
   it('"look for trouble" in the Common Room is refused honestly', () => {

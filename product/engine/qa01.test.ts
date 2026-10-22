@@ -155,7 +155,8 @@ describe('QA-01 P1-3 exit words outside a fight are honest no-ops', () => {
       const r = route(c, t)!;
       assert.equal(r.route, 'no-fight', t);
       assert.equal(st(r.campaign).combat.hp, 5, t);
-      assert.match(st(r.campaign).storyBeats.at(-1)!.prose, /no fight/i);
+      assert.match(r.message, /no fight/i);
+      assert.doesNotMatch(st(r.campaign).storyBeats.at(-1)!.prose, /\d/);
     }
   });
 });
@@ -427,17 +428,22 @@ describe('QA-01 nice-to-haves', () => {
     const beat = await resolveSceneBeat({ campaign: c, playerAction: 'sing a song', beat: 'custom', map, rng: createSeededRng(1) });
     assert.doesNotMatch(beat.prose, /Tess stands ready/);
     const where = await resolveSceneBeat({ campaign: c, playerAction: 'where am I', beat: 'custom', map, rng: createSeededRng(1) });
-    assert.match(where.prose, /You are at the Common Room/);
+    assert.match(where.prose, /common room/i);
+    assert.doesNotMatch(where.prose, /Nearby:|Here at /);
     assert.equal(placeRef('Emberford'), 'Emberford');
     assert.equal(placeRef('The Copper Kettle'), 'The Copper Kettle');
     let w = applyCampaignPatch(kitted(hurtLevel2(3)), { locationId: 'locale.ashen-fields' });
     let intro = '';
+    let introProse = '';
     for (let i = 0; i < 12 && !/ash wolf/i.test(intro); i++) {
       w = applyCampaignPatch(w, { session: { turn: w.session.turn + 1 } });
       const r = route(w, 'look for trouble')!;
-      intro = st(r.campaign).storyBeats.at(-1)!.prose;
+      intro = st(r.campaign).storyBeats.at(-1)!.mechanicsLine ?? '';
+      introProse = st(r.campaign).storyBeats.at(-1)!.prose;
     }
-    assert.match(intro, /^An ash wolf/);
+    // NARR-04: foe stats on the mechanics line; the intro prose names the foe with the right article.
+    assert.match(intro, /^Ash wolf · HP \d+ · AC \d+/);
+    assert.doesNotMatch(introProse, /\ba ash\b|\d/i);
   });
 
   it('typed input is capped at MAX_INPUT_CHARS', () => {

@@ -6,6 +6,7 @@ import {
   createSeededRng,
   createStarterMap,
   createNarratorProvider,
+  campaignToState,
   RemoteNarratorProvider,
 } from './index';
 import {
@@ -146,7 +147,7 @@ describe('scene adventure loop', () => {
     assert.equal(beat.campaign.session.locationId, 'interior.kettle-cellar');
     assert.ok(beat.where);
     assert.match(beat.where!.path, /Cellar|Copper|Ember/i);
-    assert.match(beat.prose, /arrive at|Inn Cellar/i);
+    assert.match(beat.prose, /cellar|cask|cider/i);
   });
 
   it('TRAVEL-01: go nearby moves; where-am-I matches; unknown refuses', async () => {
@@ -162,7 +163,7 @@ describe('scene adventure loop', () => {
     });
     assert.ok(go.travel);
     assert.equal(go.campaign.session.locationId, 'interior.kettle-cellar');
-    assert.match(go.prose, /arrive|Inn Cellar/i);
+    assert.match(go.prose, /cellar|cask|cider/i);
 
     camp = go.campaign;
     const where = await resolveSceneBeat({
@@ -173,8 +174,8 @@ describe('scene adventure loop', () => {
       rng: createSeededRng(5),
     });
     assert.equal(where.campaign.session.locationId, 'interior.kettle-cellar');
-    assert.match(where.prose, /You are at the Inn Cellar/i);
-    assert.doesNotMatch(where.prose, /You are at the Common Room/i);
+    assert.match(where.prose, /cellar|casks/i);
+    assert.doesNotMatch(where.prose, /Nearby:/);
 
     const refuse = await resolveSceneBeat({
       campaign: camp,
@@ -184,7 +185,7 @@ describe('scene adventure loop', () => {
     });
     assert.equal(refuse.travel, null);
     assert.equal(refuse.campaign.session.locationId, 'interior.kettle-cellar');
-    assert.match(refuse.prose, /cannot reach|nearby/i);
+    assert.ok(Object.keys(campaignToState(refuse.campaign).flags).some((k) => /^narr\.last\.travel\.(boundary|refused)$/.test(k)));
   });
 
   it('TRAVEL-01 hierarchical leave: room → parent; region stays', async () => {
@@ -201,7 +202,7 @@ describe('scene adventure loop', () => {
     assert.ok(leave.travel);
     assert.equal(leave.travel!.via, 'parent-leave');
     assert.equal(leave.campaign.session.locationId, 'place.copper-kettle');
-    assert.match(leave.prose, /arrive|Copper Kettle/i);
+    assert.match(leave.prose, /Kettle/);
 
     camp = leave.campaign;
     const outside = await resolveSceneBeat({
@@ -226,7 +227,7 @@ describe('scene adventure loop', () => {
     });
     assert.equal(top.travel, null);
     assert.equal(top.campaign.session.locationId, 'region.embervale');
-    assert.match(top.prose, /already at|open edge|nowhere higher/i);
+    assert.ok(campaignToState(top.campaign).flags['narr.last.travel.boundary']);
   });
 
   it('QA-01 P0-1: narrator never enters combat (applyCombatIntent owns fights)', async () => {

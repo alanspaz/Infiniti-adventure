@@ -81,7 +81,9 @@ describe('P-INT-03 level-up', () => {
     assert.equal(s.progression.unspentPoints, POINTS_PER_LEVEL);
     assert.equal(s.progression.xp, 350); // XP is lifetime, not spent
     assert.equal(s.storyBeats.at(-1)?.playerLine, 'Level up');
-    assert.match(s.storyBeats.at(-1)!.prose, /level 2/);
+    // NARR-04: one message (no parenthetical duplicate); the numbers are on the mechanics line.
+    assert.match(s.storyBeats.at(-1)!.mechanicsLine ?? '', /Level 2/);
+    assert.doesNotMatch(s.storyBeats.at(-1)!.prose, /\d|\(/);
     // Second press: L3 at 300 → ok; third: needs 600 → reject.
     c = applyProgressionAction(c, { kind: 'level-up' }).campaign;
     assert.equal(st(c).character!.level, 3);

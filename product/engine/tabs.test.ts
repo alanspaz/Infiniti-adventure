@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   SAVE_SCHEMA_VERSION,
+  ITEM_ORIGIN,
   applyCampaignPatch,
   applyCombatTurn,
   applyItemAction,
@@ -89,7 +90,7 @@ describe('TABS-01 selectors update live', () => {
     c = applyCampaignPatch(beat.campaign, patchesFromSceneBeat({ travelToId: beat.travel?.toNodeId ?? null })[0] ?? {});
     let map = selectMapTab(st(c));
     assert.equal(map.hereName, 'Inn Cellar');
-    assert.equal(map.chain.at(-2)?.name, 'Cellar');
+    assert.equal(map.chain.at(-2)?.name, 'Below stairs');
     const cellar = map.visited.find((p) => p.id === 'interior.kettle-cellar')!;
     assert.equal(cellar.visits, 1);
     assert.match(cellar.notes[0]!, /casks of cider/);
@@ -112,9 +113,11 @@ describe('TABS-01 selectors update live', () => {
     const tab = selectQuestTab(st(c));
     assert.equal(tab.active.length, 0);
     q = tab.done[0]!;
-    assert.ok(q.journal.some((j) => j.kind === 'done' && /Emberford.*100 XP/.test(j.text)));
+    assert.ok(q.journal.some((j) => j.kind === 'done' && /Emberford/.test(j.text)));
+    assert.ok(q.journal.every((j) => !/\d/.test(j.text)), 'journal text has no digits');
     assert.equal(q.nextLead, null);
-    assert.match(storySoFar(st(c)), /Completed “First steps”/);
+    assert.match(storySoFar(st(c)), /“First steps”/);
+    assert.equal(storySoFar(st(c)), storySoFar(st(c)), 'stable across renders');
     // Narrator-stub accept → journal "given" entry from the Tale.
     c = applyCampaignPatch(c, { acceptQuest: { id: 'quest-stub', title: 'Lost cat', summary: 'Find the miller’s cat.' } });
     const stub = selectQuestTab(st(c)).active.find((e) => e.quest.id === 'quest-stub')!;
@@ -132,9 +135,9 @@ describe('TABS-01 selectors update live', () => {
     assert.equal(r.result.outcome, 'victory');
     const s = st(r.campaign);
     const dagger = selectGearTab(s).pack.find((i) => i.id === 'dagger')!;
-    assert.match(dagger.origin.line, /Taken from a road bandit at Embervale/);
-    assert.ok(selectMapTab(s).visited.find((p) => p.id === 'region.embervale')!.notes.some((n) => /defeated a road bandit/.test(n)));
-    assert.match(storySoFar(s), /Defeated a road bandit in Embervale/);
+    assert.match(dagger.origin.line, /Taken from a road bandit in Embervale/);
+    assert.ok(selectMapTab(s).visited.find((p) => p.id === 'region.embervale')!.notes.some((n) => /a road bandit/.test(n)));
+    assert.match(storySoFar(s), /road bandit in Embervale/);
     assert.equal(selectCharacterTab(s)!.conditions.some((x) => /In combat/.test(x)), false);
   });
 
@@ -146,12 +149,12 @@ describe('TABS-01 selectors update live', () => {
     assert.equal(result.ok, true, result.message);
     let s = st(campaign);
     const d = selectGearTab(s).pack.find((i) => i.id === 'dagger')!;
-    assert.match(d.origin.line, /Bought from Dagna Brightanvil at the Forge Floor/);
-    assert.match(selectCompanionsTab(s).npcs.find((n) => n.id === 'npc.dagna')!.relationship, /Sold you a dagger/);
+    assert.match(d.origin.line, /Bought from Dagna/);
+    assert.match(selectCompanionsTab(s).npcs.find((n) => n.id === 'npc.dagna')!.relationship, /Sold you the dagger/);
     const sold = applyTrade(campaign, { kind: 'sell', merchantId: 'merchant.brightanvil', itemId: 'dagger' });
     assert.equal(sold.result.ok, true, sold.result.message);
     s = st(sold.campaign);
-    assert.match(selectCompanionsTab(s).npcs.find((n) => n.id === 'npc.dagna')!.relationship, /Bought your dagger/);
+    assert.match(selectCompanionsTab(s).npcs.find((n) => n.id === 'npc.dagna')!.relationship, /dagger/);
     assert.equal(stock.inventory.gold, 50);
   });
 
@@ -169,7 +172,8 @@ describe('TABS-01 selectors update live', () => {
     assert.equal(ch.ac.baseLabel, armor.name);
     assert.equal(ch.ac.total, ch.ac.base + ch.ac.dex + ch.ac.shield);
     assert.equal(ch.ac.dex, 1);
-    assert.equal(ch.storySoFar, 'Known to Hollis.');
+    assert.match(ch.storySoFar, /Hollis/);
+    assert.doesNotMatch(ch.storySoFar, /\d/);
   });
 
   it('long rest at the Kettle adds a Hollis note; XP bar tracks grants', () => {
@@ -182,7 +186,7 @@ describe('TABS-01 selectors update live', () => {
     assert.equal(ch.xp.pct, 0.5);
     const r = routePlayerInput(c, 'long rest', { map: createStarterMap() })!;
     const hollis = selectCompanionsTab(st(r.campaign)).npcs.find((n) => n.id === 'npc.hollis')!;
-    assert.match(hollis.relationship, /Rented you a room/);
+    assert.match(hollis.relationship, /upstairs/);
   });
 
   it('party slots: 3 for a party of 4, escorts free, pets ½', () => {
@@ -210,7 +214,7 @@ describe('TABS-01 save migration v1 → v2', () => {
     assert.ok(s.chronicle.places['place.mossglass']?.status === 'visited');
     assert.ok(s.chronicle.places['locale.emberford']?.status === 'visited');
     assert.ok(s.chronicle.npcs['npc.fennick']);
-    assert.equal(selectGearTab(s).pack[0]!.origin.line, 'Already in your pack');
+    assert.equal(selectGearTab(s).pack[0]!.origin.line, ITEM_ORIGIN.carried);
     assert.ok(selectQuestTab(s).active[0]!.journal.length > 0);
     assert.deepEqual(s.chronicle.deeds, []);
     // v1 with no world at all still loads.

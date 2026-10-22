@@ -447,7 +447,8 @@ async function main() {
   }
   const questSrc = fs.readFileSync(path.join(screensDir, 'QuestTab.tsx'), 'utf8');
   assert.match(questSrc, /selectQuestTab|partitionQuests/);
-  assert.match(questSrc, /No quests yet|No active quests/);
+  // NARR-04: the empty-state copy lives in TAB_COPY (lineBanks).
+  assert.match(questSrc, /No quests yet|No active quests|TAB_COPY\.quests\.emptyTitle/);
   assert.doesNotMatch(questSrc, /useState\(/); // context-only, no local quest copy
   const itemsSrc = fs.readFileSync(path.join(screensDir, 'ItemsTab.tsx'), 'utf8');
   assert.match(itemsSrc, /safeInventory|inventory/);
@@ -533,7 +534,7 @@ async function main() {
   );
   assert.match(characterSrc, /CombatStatsTab/);
   const mapSrc = fs.readFileSync(path.join(screensDir, 'MapScreen.tsx'), 'utf8');
-  assert.match(mapSrc, /Nearby/);
+  assert.match(mapSrc, /Nearby|TAB_COPY\.map\.nearby\b/);
   assert.match(mapSrc, /write it in the Tale|Tale/);
   assert.doesNotMatch(mapSrc, /\btravel\(/);
   assert.doesNotMatch(mapSrc, /setCampaignLocation/);

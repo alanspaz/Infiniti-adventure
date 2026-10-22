@@ -64,8 +64,10 @@ describe('QA-02 #4 Flee from the rail', () => {
     assert.equal(st(caught.campaign).combat.inCombat, true);
     assert.match(st(caught.campaign).storyBeats.at(-1)!.checkLine!, /Flee 🎲 1.*caught/);
   });
-  it('combat opener mentions Flee', () => {
-    assert.match(st(fight(hero('Warden'))).storyBeats.at(-1)!.prose, /or Flee\./);
+  it('combat opener: foe stats on the mechanics line (NARR-04 drops the "Steel yourself… or Flee." prose; the rail shows Flee)', () => {
+    const b = st(fight(hero('Warden'))).storyBeats.at(-1)!;
+    assert.match(b.mechanicsLine ?? '', / · HP \d+ · AC \d+/);
+    assert.doesNotMatch(b.prose, /\d/);
   });
 });
 
@@ -77,8 +79,9 @@ describe('QA-02 #5 Cast for non-casters', () => {
   it('explains the feeble spark for a Warden; damage is unchanged', () => {
     const w = applyCombatTurn(fight(hero('Warden')), 'cast', { rng: () => 0.99, now: 2 });
     const m = applyCombatTurn(fight(hero('Mage')), 'cast', { rng: () => 0.99, now: 2 });
-    assert.match(st(w.campaign).storyBeats.at(-1)!.prose, /no spellcaster/);
-    assert.doesNotMatch(st(m.campaign).storyBeats.at(-1)!.prose, /no spellcaster/);
+    // NARR-04: the non-caster lead comes from COMBAT_ACTION.noCaster.
+    assert.ok(st(w.campaign).flags['narr.last.combat.noCaster']);
+    assert.equal(st(m.campaign).flags['narr.last.combat.noCaster'], undefined);
     const dmg = (c: CampaignSave) => / (\d+) dmg/.exec(st(c).storyBeats.at(-1)!.checkLine!)?.[1];
     assert.ok(dmg(w.campaign));
     assert.equal(dmg(w.campaign), dmg(m.campaign));

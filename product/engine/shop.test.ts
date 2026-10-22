@@ -203,7 +203,8 @@ describe('P-INT-04 opening the shop', () => {
     const r = applyOpenShop(camp({ loc: 'locale.ashen-fields' }), 'trade', 1);
     assert.equal(r.ok, false);
     assert.equal(st(r.campaign).shop.activeMerchantId, null);
-    assert.match(st(r.campaign).storyBeats.at(-1)!.prose, /No one here is selling/);
+    // NARR-04: TRADE_NOBODY bank line.
+    assert.ok(st(r.campaign).flags['narr.last.trade.nobody']);
   });
 });
 
