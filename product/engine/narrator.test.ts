@@ -446,4 +446,29 @@ describe('narrator provider', () => {
     assert.equal(g.source, 'remote');
     assert.ok(!g.guardFallback);
   });
+
+  it('NARR-04 remote: a reply naming the player class is kept (even a custom one); a WotC term falls back', async () => {
+    const make = (content: string) =>
+      (async () =>
+        ({
+          ok: true,
+          json: async () => ({
+            id: 'x', object: 'chat.completion', created: 1, model: 't',
+            choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }],
+          }),
+        }) as Response) as unknown as typeof fetch;
+    const ask = (content: string, playerClass: string) =>
+      new RemoteNarratorProvider({ baseUrl: 'https://example.test/v1', apiKey: 'k', enableHttp: true, fetchImpl: make(content) }).narrateScene({
+        beat: 'custom', playerAction: 'look around', playstylePackId: 'hearthlight', partyNames: [],
+        promptFacts: { playerName: 'Tess', playerClass },
+      });
+    const cleric = await ask('You stand by the hearth like the Cleric you are, and the room settles.', 'Cleric');
+    assert.equal(cleric.source, 'remote');
+    assert.match(cleric.prose, /Cleric/);
+    const custom = await ask('The Mind Flayer Hunter in you notes every shadow by the hearth.', 'Mind Flayer Hunter');
+    assert.equal(custom.source, 'remote');
+    const ip = await ask('The benches here remind you of an inn in Waterdeep.', 'Cleric');
+    assert.equal(ip.guardFallback, true);
+    assert.doesNotMatch(ip.prose, /Waterdeep/);
+  });
 });

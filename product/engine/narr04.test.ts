@@ -27,6 +27,8 @@ import {
   selectQuestTab,
   STARTER_QUEST,
   MAX_ITEM_HISTORY,
+  itemOrigin,
+  combatActionHint,
   type CampaignSave,
   type Rng,
 } from './index';
@@ -483,5 +485,88 @@ describe('NARR-04 imports', () => {
       if (!seen[n]) dfs(n);
     });
     assert.deepEqual([...cycles], []);
+  });
+});
+
+/* ───────── NARR-04 follow-ups (addendum 01, remote class names, combat hint) ───────── */
+
+describe('NARR-04 follow-ups', () => {
+  it('remote lint: generic class words pass; the player class always passes; WotC IP still fails', () => {
+    for (const w of ['cleric', 'bard', 'rogue', 'paladin', 'warlock', 'sorcerer', 'dragon', 'dungeon']) {
+      assert.equal(BANNED_PROSE_RE.test(`A ${w} stands by the hearth.`), false, w);
+    }
+    for (const w of ['Waterdeep', 'mind flayer', 'beholder', 'Forgotten Realms', 'D&D', 'Dungeons & Dragons', '5e', 'tiefling']) {
+      assert.equal(BANNED_PROSE_RE.test(`You think of ${w}.`), true, w);
+    }
+    // A custom class that happens to contain an IP word is still the player's own.
+    assert.deepEqual(proseLintIssues('You grip your blade the way a beholder-hunter should.', { allowTerms: ['Beholder-hunter'] }), []);
+    assert.ok(proseLintIssues('You grip your blade. A beholder watches.', { allowTerms: ['Beholder-hunter'] }).some((i) => i.startsWith('banned')));
+  });
+
+  it('cellar → Kettle uses a from-inside arrival, without repeating; common room → Kettle does not', async () => {
+    const seen: string[] = [];
+    let c = hero('interior.kettle-cellar', []);
+    for (let i = 0; i < 3; i++) {
+      const up = await resolveSceneBeat({ campaign: c, playerAction: 'leave', beat: 'custom', map, rng: createSeededRng(i + 1), forceCheck: null });
+      assert.equal(st(up.campaign).locationId, 'place.copper-kettle');
+      const id = String(st(up.campaign).flags['narr.last.arrival.inside.place.copper-kettle'] ?? '');
+      assert.match(id, /^arr\.in\.kettle\./);
+      const line = B.ARRIVE_FROM_INSIDE['place.copper-kettle']!.find((l) => l.id === id)!;
+      assert.ok(up.prose.startsWith(line.lead));
+      seen.push(id);
+      // back down for the next round
+      c = applyCampaignPatch(up.campaign, { locationId: 'interior.kettle-cellar' });
+    }
+    assert.notEqual(seen[0], seen[1]);
+    assert.notEqual(seen[1], seen[2]);
+
+    const common = hero('interior.kettle-common', []);
+    const out = await resolveSceneBeat({ campaign: common, playerAction: 'leave', beat: 'custom', map, rng: createSeededRng(3), forceCheck: null });
+    assert.equal(st(out.campaign).locationId, 'place.copper-kettle');
+    assert.equal(st(out.campaign).flags['narr.last.arrival.inside.place.copper-kettle'], undefined);
+    assert.match(String(st(out.campaign).flags['narr.last.arrival.place.copper-kettle']), /^arr\.kettle\./);
+  });
+
+  it('forge floor → Brightanvil and counter → Mossglass use from-inside lines', async () => {
+    for (const [from, to, re] of [
+      ['interior.smith-forge', 'place.brightanvil', /^arr\.in\.smith\./],
+      ['interior.alchemist-counter', 'place.mossglass', /^arr\.in\.moss\./],
+    ] as const) {
+      const r = await resolveSceneBeat({ campaign: hero(from, []), playerAction: 'leave', beat: 'custom', map, rng: createSeededRng(2), forceCheck: null });
+      assert.equal(st(r.campaign).locationId, to);
+      assert.match(String(st(r.campaign).flags[`narr.last.arrival.inside.${to}`]), re);
+      assert.doesNotMatch(r.prose, /\d/);
+    }
+  });
+
+  it("ITEM_ORIGIN.bought has no place slot: 'Bought from Hollis'", () => {
+    const c = hero('interior.kettle-common', [], 10);
+    const buy = applyTrade(c, { kind: 'buy', merchantId: 'merchant.kettle', itemId: 'rations' });
+    assert.equal(buy.result.ok, true);
+    const item = st(buy.campaign).inventory.items.find((i) => /ration/i.test(i.name))!;
+    assert.equal(itemOrigin(st(buy.campaign).chronicle, item.id).line, 'Bought from Hollis');
+    assert.doesNotMatch(B.ITEM_ORIGIN.bought, /\{where\}/);
+  });
+
+  it('combat hint: on the first beat of a fight only, never in the prose; Spark for non-casters', () => {
+    for (const [cls, hint] of [
+      ['Warden', 'Attack · Defend · Dodge · Spark · Use Item · Flee'],
+      ['Mage', 'Attack · Defend · Dodge · Cast · Use Item · Flee'],
+    ] as const) {
+      let c = createCampaignFromIdentity({ name: 'Tess', className: cls, originMode: 'backstory', playstylePackId: 'hearthlight' }, { rng: createSeededRng(5) });
+      c = applyCampaignPatch(c, { locationId: 'locale.ashen-fields' });
+      const open = routePlayerInput(c, 'look for trouble', { map, now: 10, rng: createSeededRng(5) })!;
+      assert.ok(st(open.campaign).combat.inCombat);
+      const first = lastBeat(open.campaign);
+      assert.equal(first.actionHint, hint);
+      assert.equal(combatActionHint(cls), hint);
+      assert.ok(!first.prose.includes('·') && !/\bFlee\b/.test(first.prose));
+      const next = routePlayerInput(open.campaign, 'defend', { map, now: 11, rng: createSeededRng(6) })!;
+      assert.equal(lastBeat(next.campaign).actionHint, undefined);
+      // the hint survives a save round-trip on the first beat
+      const back = parseCampaign(serializeCampaign(next.campaign));
+      const beats = st(back).storyBeats;
+      assert.equal(beats.filter((b) => b.actionHint).length, 1);
+    }
   });
 });

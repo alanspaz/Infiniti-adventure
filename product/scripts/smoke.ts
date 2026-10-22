@@ -118,6 +118,11 @@ async function main() {
     'utf8',
   );
   assert.match(railSrc, /if \(!state\.combat\.inCombat\)\s*\{\s*return null;/);
+  // NARR-04: the first-beat combat hint lists the rail's own actions, in rail order.
+  {
+    const railLabels = [...railSrc.matchAll(/\{ mode: '[a-z-]+', label: '([^']+)'/g)].map((m) => m[1]);
+    assert.deepEqual(railLabels, [...engine.COMBAT_ACTION_HINT_LABELS]);
+  }
   // BG-01 backdrop: every art id is bundled (static require, file exists), no network.
   {
     const bdSrc = fs.readFileSync(
