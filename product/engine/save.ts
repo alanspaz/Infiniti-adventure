@@ -34,6 +34,11 @@ export type StoryBeatRecord = {
    * Built from the engine's own delta — prose never carries numbers. Optional for older saves.
    */
   mechanicsLine?: string | null;
+  /**
+   * NARR-04: muted combat-actions hint ("Attack · Defend · …"), only on a fight's first beat.
+   * UI chrome, not story text. Optional for older saves.
+   */
+  actionHint?: string | null;
 };
 
 export type SessionState = {
@@ -111,6 +116,7 @@ function normalizeStoryBeats(
     ...(typeof b.mechanicsLine === 'string' && b.mechanicsLine.trim()
       ? { mechanicsLine: b.mechanicsLine }
       : {}),
+    ...(typeof b.actionHint === 'string' && b.actionHint.trim() ? { actionHint: b.actionHint } : {}),
   }));
 }
 
@@ -256,7 +262,8 @@ function isStoryBeatRecord(value: unknown): value is StoryBeatRecord {
       typeof b.playerLine === 'string') &&
     (b.mechanicsLine === undefined ||
       b.mechanicsLine === null ||
-      typeof b.mechanicsLine === 'string')
+      typeof b.mechanicsLine === 'string') &&
+    (b.actionHint === undefined || b.actionHint === null || typeof b.actionHint === 'string')
   );
 }
 

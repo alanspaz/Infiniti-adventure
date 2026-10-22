@@ -168,6 +168,27 @@ export function isSpellcasterClass(className: string | null | undefined): boolea
   return CASTER_CLASS_RE.test(className ?? '');
 }
 
+/**
+ * NARR-04: the combat rail's actions, in rail order (CombatRail.tsx COMBAT_RAIL_ACTIONS).
+ * Shown once as a muted hint under the first beat of a fight; never part of the prose.
+ */
+export const COMBAT_ACTION_HINT_LABELS = ['Attack', 'Defend', 'Dodge', 'Cast', 'Use Item', 'Flee'] as const;
+
+export function combatActionHint(className: string | null | undefined): string {
+  const caster = className == null ? true : isSpellcasterClass(className);
+  return COMBAT_ACTION_HINT_LABELS.map((l) => (l === 'Cast' && !caster ? 'Spark' : l)).join(' · ');
+}
+
+/** Put the action hint on the newest story beat (the fight's opening beat). */
+function withActionHint(campaign: CampaignSave): CampaignSave {
+  const s = campaignToState(campaign);
+  if (s.storyBeats.length === 0) return campaign;
+  const beats = [...s.storyBeats];
+  const last = beats[beats.length - 1]!;
+  beats[beats.length - 1] = { ...last, actionHint: combatActionHint(s.character ? s.character.className : null) };
+  return applyCampaignPatch(campaign, { storyBeats: beats });
+}
+
 export function spellProfile(state: CampaignState): PlayerAttackProfile {
   const ab = pcAbilities(state);
   const mod = Math.max(
@@ -684,6 +705,7 @@ export function applyCombatIntent(
       narrFlags: introVoice.flags(),
       event: 'justFought',
     });
+    next = withActionHint(next);
     return {
       campaign: next,
       result: {
@@ -711,13 +733,12 @@ export function applyCombatIntent(
     const last = beats[beats.length - 1]!;
     const ml = [introMechanics, last.mechanicsLine].filter(Boolean).join(' · ');
     beats[beats.length - 1] = { ...last, prose: `${intro} ${last.prose}`, ...(ml ? { mechanicsLine: ml } : {}) };
-    return {
-      campaign: applyCampaignPatch(turn.campaign, {
-        storyBeats: beats,
-        flags: { ...introVoice.flags(), ...turn.campaign.flags, ...introOnlyFlags(introVoice) },
-      }),
-      result: turn.result,
-    };
+    const opened = applyCampaignPatch(turn.campaign, {
+      storyBeats: beats,
+      flags: { ...introVoice.flags(), ...turn.campaign.flags, ...introOnlyFlags(introVoice) },
+    });
+    // A one-blow fight is already over: no hint for a rail that is gone.
+    return { campaign: campaignToState(opened).combat.inCombat ? withActionHint(opened) : opened, result: turn.result };
   }
   return turn;
 }

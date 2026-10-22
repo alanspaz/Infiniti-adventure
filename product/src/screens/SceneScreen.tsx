@@ -55,6 +55,8 @@ type StoryBeat = {
   playerLine: string | null;
   /** NARR-04: compact numbers under the prose (never inside it). */
   mechanicsLine: string | null;
+  /** NARR-04: muted combat-actions hint, first beat of a fight only (not story text). */
+  actionHint?: string | null;
 };
 
 const MAX_STORY_BEATS = 40;
@@ -105,6 +107,7 @@ function recordsToBeats(records: StoryBeatRecord[]): StoryBeat[] {
     placeLine: r.placeLine ?? null,
     playerLine: r.playerLine ?? null,
     mechanicsLine: r.mechanicsLine ?? null,
+    actionHint: r.actionHint ?? null,
   }));
 }
 
@@ -134,6 +137,7 @@ function toRecord(beat: StoryBeat): StoryBeatRecord {
     placeLine: beat.placeLine,
     playerLine: beat.playerLine,
     ...(beat.mechanicsLine ? { mechanicsLine: beat.mechanicsLine } : {}),
+    ...(beat.actionHint ? { actionHint: beat.actionHint } : {}),
   };
 }
 
@@ -506,6 +510,11 @@ export function SceneScreen({
               {b.mechanicsLine}
             </Text>
           ) : null}
+          {b.actionHint ? (
+            <Text style={styles.actionHint} accessibilityLabel={`Combat actions: ${b.actionHint}`}>
+              {b.actionHint}
+            </Text>
+          ) : null}
           {b.checkLine ? (
             <View style={styles.checkCard}>
               <Text style={styles.checkLabel}>Check</Text>
@@ -859,6 +868,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     letterSpacing: 0.2,
+  },
+  actionHint: {
+    marginTop: 2,
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: 0.2,
+    opacity: 0.8,
   },
   checkCard: {
     borderWidth: 1,
