@@ -618,6 +618,7 @@ export async function resolveSceneBeat(
     inCombatWith: state.combat.inCombat ? state.combat.foe?.name ?? null : null,
     promptFacts: {
       playerName: pc?.name ?? null,
+      playerClass: pc?.className ?? null,
       peopleHere: npcsAt(factsLoc).map((n) => ({ name: n.name, role: n.role })),
       condition,
       activeQuest: activeQuests[0]?.title ?? null,

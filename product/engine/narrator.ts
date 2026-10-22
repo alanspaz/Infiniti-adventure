@@ -1,7 +1,8 @@
-import { placeRef } from './mapGraph';
+import { createStarterMap, placeRef, type MapGraph } from './mapGraph';
 import { tryLoadPlaystylePack } from './pack';
 import {
   ARRIVAL,
+  ARRIVE_FROM_INSIDE,
   CONTINUE,
   CUSTOM,
   HEARTH_STATE,
@@ -317,6 +318,27 @@ export type StubProse = {
   promptBeat: PromptBeat;
 };
 
+
+let starterGraph: MapGraph | null = null;
+/**
+ * NARR-04 addendum 01: the source rooms each from-inside arrival bank describes. The Kettle lines
+ * are written for coming up from the cellar (stairs, cellar smell), so the common room keeps the
+ * ordinary Kettle arrival.
+ */
+const FROM_INSIDE_SOURCES: Partial<Record<string, readonly string[]>> = {
+  'place.copper-kettle': ['interior.kettle-cellar'],
+  'place.brightanvil': ['interior.smith-forge'],
+  'place.mossglass': ['interior.alchemist-counter'],
+};
+
+/** Travel from a child node (interior/floor) up to its parent building, with copy for that room. */
+export function isArrivalFromInside(fromId: string | null, toId: string | null): boolean {
+  if (!fromId || !toId || !ARRIVE_FROM_INSIDE[toId as NodeId]) return false;
+  if (!FROM_INSIDE_SOURCES[toId]?.includes(fromId)) return false;
+  starterGraph ??= createStarterMap();
+  return starterGraph.nodes[fromId]?.parentId === toId;
+}
+
 /** NARR-04 stub: every line comes from lineBanks via the seeded voice. */
 export function resolveStubProse(request: NarratorSceneRequest): StubProse {
   const beat = request.beat ?? 'opening';
@@ -361,8 +383,14 @@ export function resolveStubProse(request: NarratorSceneRequest): StubProse {
       promptBeat = 'arrival';
       const toId = travel.toNodeId ?? null;
       const values: TokenValues = { ...base, place: placeRefFor(toId, placeRef(travel.place.name)) };
-      const banks = [toId ? ARRIVAL[toId as NodeId] : undefined, WHERE_AM_I_FALLBACK];
-      const parts: string[] = [say(`arrival.${toId ?? 'any'}`, banks, values, toId) ?? STUB_SAFE_PROSE];
+      const fromInside = isArrivalFromInside(here, toId);
+      const banks = [
+        fromInside ? ARRIVE_FROM_INSIDE[toId as NodeId] : undefined,
+        toId ? ARRIVAL[toId as NodeId] : undefined,
+        WHERE_AM_I_FALLBACK,
+      ];
+      const path = fromInside ? `arrival.inside.${toId}` : `arrival.${toId ?? 'any'}`;
+      const parts: string[] = [say(path, banks, values, toId) ?? STUB_SAFE_PROSE];
       if (request.questBeats?.progressAtDoor) {
         const p = say('quest.firstSteps.progress', QUEST_FIRST_STEPS_MORE.progress, values);
         if (p) parts.push(p);
@@ -547,7 +575,8 @@ export class RemoteNarratorProvider implements NarratorProvider {
       ...(request.inCombatWith ? [request.inCombatWith] : []),
       ...(request.locationHint?.name ? [request.locationHint.name] : []),
     ];
-    if (!isCleanProse(raw, { allowNames, verbosity: request.verbosity ?? 'standard' })) {
+    const allowTerms = request.promptFacts?.playerClass ? [request.promptFacts.playerClass] : [];
+    if (!isCleanProse(raw, { allowNames, allowTerms, verbosity: request.verbosity ?? 'standard' })) {
       return {
         prose: stub.prose,
         providerKind: 'remote',

@@ -78,6 +78,8 @@ export type NarratorPromptFacts = {
   peopleHere?: ReadonlyArray<{ name: string; role: string }>;
   mentioned?: ReadonlyArray<{ place: string; note: string }>;
   playerName?: string | null;
+  /** The player's class as they chose it (custom names included). */
+  playerClass?: string | null;
   companions?: readonly string[];
   condition?: 'hale' | 'hurt' | 'down';
   inCombatWith?: string | null;
@@ -114,7 +116,8 @@ export function buildNarratorUserMessage(f: NarratorPromptFacts): string {
     lines.push(`THEY HAVE MENTIONED: ${f.mentioned.map((m) => `${m.place}: ${m.note.replace(/^[A-Z][a-z]+:\s*/, '')}`).join('; ')}`);
   }
   lines.push('');
-  const party = [f.playerName ? `${f.playerName} (you)` : 'you', ...(f.companions ?? [])];
+  const you = f.playerClass ? `you, ${f.playerClass}` : 'you';
+  const party = [f.playerName ? `${f.playerName} (${you})` : f.playerClass ? `you (${f.playerClass})` : 'you', ...(f.companions ?? [])];
   lines.push(`PARTY: ${party.join(', ')}`);
   if (f.condition) lines.push(`CONDITION: ${f.condition}`);
   if (f.inCombatWith) lines.push(`IN COMBAT WITH: ${f.inCombatWith}`);

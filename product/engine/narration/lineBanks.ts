@@ -2302,3 +2302,34 @@ export function stablePick(bank: Bank, ctx: LineContext, campaignId: string, key
   for (const ch of `${campaignId}|${key}`) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
   return eligible[h % eligible.length]!;
 }
+
+/**
+ * NARR-04 addendum 01 · arrival from inside: travel from a child node (interior/floor) up to
+ * its parent building. Narrator applies it only for the source rooms the copy describes.
+ */
+export const ARRIVE_FROM_INSIDE: Partial<Record<NodeId, Bank>> = {
+  'place.copper-kettle': [
+    { id: 'arr.in.kettle.0', lead: `You climb back up out of the cool dark, and the Kettle's warmth finds you again: woodsmoke, voices, the clink of mugs.` },
+    { id: 'arr.in.kettle.1', lead: `Up the stairs and back into the noise. The threshold's draught tugs at you from the street door.` },
+    { id: 'arr.in.kettle.2', lead: `The cellar smell gives way to bread and smoke as you come up. The street door is just ahead, if you want it.` },
+    { id: 'arr.in.kettle.al.0', when: { pack: 'ash-ledger' }, lead: `You come up from below with dust on your sleeves. Nobody at the threshold asks what you were doing down there.` },
+    { id: 'arr.in.kettle.al.1', when: { pack: 'ash-ledger' }, lead: `Back up the stairs. The street door stands half open, letting in grey light and the noise of a town that keeps its own accounts.` },
+    { id: 'arr.in.kettle.al.2', when: { pack: 'ash-ledger' }, lead: `You climb out of the cellar. The threshold is busy, and a few eyes take note of where you came from.` },
+  ],
+  'place.brightanvil': [
+    { id: 'arr.in.smith.0', lead: `You step back from the heat of the forge floor into the front of the smithy, where the air is easier to breathe.` },
+    { id: 'arr.in.smith.1', lead: `The ring of the hammer softens behind you as you come back through to the front of Brightanvil.` },
+    { id: 'arr.in.smith.2', lead: `Out of the forge glow and back into the front of the smithy, sparks still fading in your eyes.` },
+    { id: 'arr.in.smith.al.0', when: { pack: 'ash-ledger' }, lead: `You leave the forge heat behind. Soot clings to you, and the front of the smithy smells of oil and iron.` },
+    { id: 'arr.in.smith.al.1', when: { pack: 'ash-ledger' }, lead: `Back from the forge floor. Somewhere behind you the hammer keeps working, as if you were never there.` },
+    { id: 'arr.in.smith.al.2', when: { pack: 'ash-ledger' }, lead: `You come through from the forge with your eyes stinging. Brightanvil's front room is quieter, but not by much.` },
+  ],
+  'place.mossglass': [
+    { id: 'arr.in.moss.0', lead: `You turn away from the counter, and the green-lit jars of Mossglass gather around you again.` },
+    { id: 'arr.in.moss.1', lead: `Back from the counter, past shelves that smell of crushed leaves and something sharper underneath.` },
+    { id: 'arr.in.moss.2', lead: `You step back into the shop proper. Lamps glow green over bottles you could not name.` },
+    { id: 'arr.in.moss.al.0', when: { pack: 'ash-ledger' }, lead: `You leave the counter. The jars on the shelves watch you go, each one priced, and nothing here is free.` },
+    { id: 'arr.in.moss.al.1', when: { pack: 'ash-ledger' }, lead: `Back from the counter, into the green half-light. The bitter smell of the place clings to your coat.` },
+    { id: 'arr.in.moss.al.2', when: { pack: 'ash-ledger' }, lead: `You step away from the counter. Mossglass keeps its quiet, and its prices.` },
+  ],
+};
