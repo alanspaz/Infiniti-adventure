@@ -31,6 +31,7 @@ import {
   type ItemActionRequest,
   type ItemActionResult,
 } from './items';
+import { placePhrase } from './chronicle';
 import { xpForLevel } from './progression';
 import { createSeededRng, type Rng } from './rng';
 import type { CampaignSave } from './save';
@@ -330,6 +331,22 @@ export function resolveCombatTurn(
         grantXp: foe.xp,
         ...(foe.gold > 0 ? { grantGold: foe.gold } : {}),
         ...(foe.loot ? { addItem: { ...foe.loot } } : {}),
+        // TABS-01: the deed, where the loot came from, and a note on the place.
+        deed: { kind: 'victory', text: `Defeated ${articledFoe(foe.name)}${state.locationId ? ` in ${placePhrase(state.locationId)}` : ''}` },
+        ...(foe.loot
+          ? {
+              itemObtained: {
+                itemId: foe.loot.id,
+                name: foe.loot.name,
+                how: 'loot' as const,
+                source: foe.name,
+                locationId: state.locationId,
+              },
+            }
+          : {}),
+        ...(state.locationId
+          ? { placeLearned: { id: state.locationId, note: `You defeated ${articledFoe(foe.name)} here.` } }
+          : {}),
       },
       narration: `${prose.join(' ')} ${cap(foeName)} falls and does not rise. You gain ${rewards}.${canLevel ? ' You feel ready to level up (see Character).' : ''}`,
       rollLine: lines.join(' · '),
@@ -632,4 +649,9 @@ export function applyItemActionWithTurn(
     result: { ...item, message: `${item.message} ${turn.message}`.trim() },
     turn,
   };
+}
+
+function articledFoe(name: string): string {
+  const n = name.toLowerCase();
+  return /^[aeiou]/.test(n) ? `an ${n}` : `a ${n}`;
 }

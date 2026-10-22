@@ -231,6 +231,8 @@ function restHere(campaign: CampaignSave, text: string, long: boolean, now: numb
       merchants: { [INN_MERCHANT_ID]: { ...purse, gold: purse.gold + LONG_REST_COST } },
       combat: { hp: max },
       flags: { [SHORT_RESTS_FLAG]: 0 },
+      // TABS-01: Hollis remembers paying guests.
+      npcMet: { id: 'npc.hollis', locationId: state.locationId, note: `Rented you a room for ${LONG_REST_COST} gold.` },
     };
     return { campaign: beat(campaign, patch, msg, text, now, true), route: 'rest', ok: true, message: msg };
   }

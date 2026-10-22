@@ -29,7 +29,15 @@ export type CharacterSheet = CharacterIdentity & {
   abilities: AbilityScores;
   /** Class hit die; default 8 when omitted at creation time. */
   hitDie: HitDie;
+  /**
+   * TABS-01: how a party member counts against party slots (C-01 lock:
+   * companions 1, escorts free, pets ½). Omitted = companion. Joining is
+   * parked; nothing sets this yet.
+   */
+  partyRole?: PartyRole;
 };
+
+export type PartyRole = 'companion' | 'escort' | 'pet';
 
 export type DerivedStats = {
   modifiers: AbilityScores;

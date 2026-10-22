@@ -41,7 +41,7 @@ describe('P-INT-01 starter kit', () => {
 });
 
 describe('P-INT-01 inspect', () => {
-  it('is read-only: no patch, campaign object unchanged', () => {
+  it('changes no play state; records lore once (TABS-01), then is a no-op', () => {
     const c = kitCampaign();
     const { campaign, result } = applyItemAction(c, {
       kind: 'inspect',
@@ -50,8 +50,15 @@ describe('P-INT-01 inspect', () => {
     assert.equal(result.ok, true);
     assert.equal(result.patch, null);
     assert.equal(result.narration, null);
-    assert.equal(campaign, c);
     assert.match(result.message, /AC 11/);
+    // Only the chronicle's item lore changed — no beat, turn, items or gold.
+    assert.deepEqual(campaign.session, c.session);
+    assert.deepEqual(campaign.world!.inventory, c.world!.inventory);
+    assert.deepEqual(campaign.world!.combat, c.world!.combat);
+    assert.equal(campaignToState(campaign).chronicle.items['starter-leather-armor']?.lore, result.message);
+    // Second inspect: already recorded → same object back.
+    const again = applyItemAction(campaign, { kind: 'inspect', itemId: 'starter-leather-armor' });
+    assert.equal(again.campaign, campaign);
   });
 });
 

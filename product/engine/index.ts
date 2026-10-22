@@ -21,3 +21,6 @@ export * from './bestiary';
 export * from './combat';
 export * from './backdrop';
 export * from './input';
+export * from './npcs';
+export * from './chronicle';
+export * from './tabs';

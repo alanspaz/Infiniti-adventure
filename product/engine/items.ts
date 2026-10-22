@@ -416,6 +416,22 @@ export function applyItemAction(
 ): { campaign: CampaignSave; result: ItemActionResult } {
   const state = campaignToState(campaign);
   const result = resolveItemAction(state, req);
+  // TABS-01: inspecting records the item's lore once (the Gear tab shows it).
+  // No beat, no turn, no other state change.
+  if (req.kind === 'inspect' && result.ok && !result.patch) {
+    const it = findItem(state, req.itemId);
+    if (it && state.chronicle.items[it.id]?.lore !== result.message) {
+      return {
+        campaign: applyCampaignPatch(campaign, {
+          itemLore: { itemId: it.id, text: result.message },
+          ...(state.chronicle.items[it.id]
+            ? {}
+            : { itemObtained: { itemId: it.id, name: it.name, how: 'carried' as const, locationId: null } }),
+        }),
+        result,
+      };
+    }
+  }
   if (!result.ok || !result.patch) return { campaign, result };
   let patch: CampaignStatePatch = result.patch;
   if (result.narration) {
@@ -435,5 +451,12 @@ export function starterKitPatch(state: CampaignState): CampaignStatePatch | null
   return {
     inventory: { items: [...state.inventory.items, ...add].map(normalizeInventoryItem) },
     flags: { [STARTER_KIT_FLAG]: true },
+    itemObtained: add.map((i) => ({
+      itemId: i.id,
+      name: i.name,
+      how: 'starter' as const,
+      source: 'your starting kit',
+      locationId: state.locationId,
+    })),
   };
 }

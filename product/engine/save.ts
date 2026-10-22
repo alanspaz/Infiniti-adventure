@@ -3,7 +3,9 @@ import {
   PersistStore,
   campaignSaveKey,
 } from './persist';
+import { backfillChronicle } from './chronicle';
 import {
+  QUEST_ARRIVAL_TRIGGERS,
   STARTER_QUEST,
   createEmptyWorld,
   isCampaignWorldState,
@@ -11,7 +13,9 @@ import {
   type CampaignWorldState,
 } from './campaignState';
 
-export const SAVE_SCHEMA_VERSION = 1 as const;
+export const SAVE_SCHEMA_VERSION = 2 as const;
+/** Older versions parseCampaign still accepts (and migrates forward). */
+export const MIGRATABLE_SCHEMA_VERSIONS: readonly number[] = [1];
 
 /** Player-facing story log entry persisted with the campaign. */
 export type StoryBeatRecord = {
@@ -117,6 +121,15 @@ export function createEmptySession(
 /** Create a new campaign save. Empty party is valid; never auto-spawns companions. */
 export function createCampaign(input: CreateCampaignInput): CampaignSave {
   const now = input.createdAt ?? isoNow();
+  const session = createEmptySession(input.session);
+  const world = createEmptyWorld({
+    ...input.world,
+    // Q-01: optional stub starter quest for new campaigns (explicit quests win).
+    quests:
+      input.world?.quests !== undefined
+        ? input.world.quests
+        : [STARTER_QUEST],
+  });
   return {
     schemaVersion: SAVE_SCHEMA_VERSION,
     id: input.id,
@@ -126,16 +139,10 @@ export function createCampaign(input: CreateCampaignInput): CampaignSave {
     playstylePackId:
       input.playstylePackId === undefined ? null : input.playstylePackId,
     party: input.party ? [...input.party] : [],
-    session: createEmptySession(input.session),
+    session,
     flags: { ...(input.flags ?? {}) },
-    world: createEmptyWorld({
-      ...input.world,
-      // Q-01: optional stub starter quest for new campaigns (explicit quests win).
-      quests:
-        input.world?.quests !== undefined
-          ? input.world.quests
-          : [STARTER_QUEST],
-    }),
+    // TABS-01: a new campaign's chronicle opens with its quests + start place.
+    world: input.world?.chronicle !== undefined ? world : migrateWorldToV2(world, session),
   };
 }
 
@@ -274,7 +281,10 @@ export function parseCampaign(json: string): CampaignSave {
     throw new Error('Campaign must be an object');
   }
   const o = raw as Record<string, unknown>;
-  if (o.schemaVersion !== SAVE_SCHEMA_VERSION) {
+  if (
+    o.schemaVersion !== SAVE_SCHEMA_VERSION &&
+    !MIGRATABLE_SCHEMA_VERSIONS.includes(o.schemaVersion as number)
+  ) {
     throw new Error(
       `Unsupported save schemaVersion: ${String(o.schemaVersion)} (expected ${SAVE_SCHEMA_VERSION})`,
     );
@@ -309,6 +319,14 @@ export function parseCampaign(json: string): CampaignSave {
     }
   }
 
+  const session = createEmptySession(o.session as SessionState);
+  const rawWorld =
+    o.world === undefined || o.world === null ? undefined : (o.world as CampaignWorldState);
+  let world = normalizeWorld(rawWorld);
+  // TABS-01 migration v1 → v2: default the chronicle from what the save holds.
+  if (o.schemaVersion !== SAVE_SCHEMA_VERSION || !rawWorld || rawWorld.chronicle === undefined) {
+    world = migrateWorldToV2(world, session);
+  }
   return {
     schemaVersion: SAVE_SCHEMA_VERSION,
     id: o.id,
@@ -317,13 +335,26 @@ export function parseCampaign(json: string): CampaignSave {
     updatedAt: o.updatedAt,
     playstylePackId: o.playstylePackId as string | null,
     party: o.party as CharacterSheet[],
-    session: createEmptySession(o.session as SessionState),
+    session,
     flags: { ...(o.flags as Record<string, CampaignFlagValue>) },
-    world: normalizeWorld(
-      o.world === undefined || o.world === null
-        ? undefined
-        : (o.world as CampaignWorldState),
-    ),
+    world,
+  };
+}
+
+/** v1 → v2: backfill the TABS-01 chronicle (people, places, item origins, journal). */
+export function migrateWorldToV2(
+  world: CampaignWorldState,
+  session: SessionState,
+): CampaignWorldState {
+  return {
+    ...world,
+    chronicle: backfillChronicle({
+      locationId: session.locationId,
+      turn: session.turn,
+      items: world.inventory.items,
+      quests: world.quests,
+      arrivalTrigger: (id) => QUEST_ARRIVAL_TRIGGERS[id] ?? null,
+    }),
   };
 }
 

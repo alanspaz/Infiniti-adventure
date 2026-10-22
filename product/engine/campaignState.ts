@@ -3,6 +3,14 @@
  * Persists via CampaignSave.world (+ existing party/session fields).
  */
 import { normalizeFoe, spawnFoe, type FoeState } from './bestiary';
+import {
+  applyChroniclePatch,
+  deriveChronicleEvents,
+  normalizeChronicle,
+  type ChronicleState,
+  type ChroniclePatch,
+  type ItemObtainedEvent,
+} from './chronicle';
 import { deriveStats } from './derived';
 import type { CampaignFlagValue, CampaignSave, SessionState, StoryBeatRecord } from './save';
 import type { CharacterSheet, Party } from './types';
@@ -222,6 +230,8 @@ export type CampaignWorldState = {
   progression: ProgressionState;
   merchants: Record<string, MerchantState>;
   shop: ShopState;
+  /** TABS-01: what the story has recorded (people, places, item origins, journal). */
+  chronicle: ChronicleState;
 };
 
 /** Unified read model for PlayShell — one store, no per-tab copies. */
@@ -241,6 +251,7 @@ export type CampaignState = {
   progression: ProgressionState;
   merchants: Record<string, MerchantState>;
   shop: ShopState;
+  chronicle: ChronicleState;
   storyBeats: StoryBeatRecord[];
   storyMeta: StoryMeta;
   flags: Record<string, CampaignFlagValue>;
@@ -257,7 +268,7 @@ export type CampaignState = {
  *   go below 0 — gold is left unchanged (prefer reject over silent clamp).
  * - Direct `inventory.gold` writes still clamp ≥ 0 as a safety net.
  */
-export type CampaignStatePatch = {
+export type CampaignStatePatch = ChroniclePatch & {
   locationId?: string | null;
   inventory?: Partial<InventoryState>;
   /** Add or stack an item by id. */
@@ -349,6 +360,7 @@ export function createEmptyWorld(
     progression: normalizeProgression(patch?.progression),
     merchants: normalizeMerchants(patch?.merchants),
     shop: normalizeShop(patch?.shop),
+    chronicle: normalizeChronicle(patch?.chronicle),
   };
 }
 
@@ -601,6 +613,7 @@ export function campaignToState(campaign: CampaignSave): CampaignState {
       world.shop.atLocationId === (campaign.session.locationId ?? null)
         ? world.shop
         : { activeMerchantId: null, atLocationId: null },
+    chronicle: world.chronicle,
     storyBeats,
     storyMeta: {
       ...world.storyMeta,
@@ -796,6 +809,7 @@ export function applyCampaignPatch(
       ...(patch.merchants ?? {}),
     }),
     shop: normalizeShop(patch.shop ? { ...world.shop, ...patch.shop } : world.shop),
+    chronicle: world.chronicle,
   };
 
   let session = campaign.session;
@@ -823,6 +837,8 @@ export function applyCampaignPatch(
     nextWorld.shop = { activeMerchantId: null, atLocationId: null };
   }
 
+  nextWorld.chronicle = advanceChronicle(campaign, world, nextWorld, session, party, patch);
+
   const now = new Date().toISOString();
   return {
     ...campaign,
@@ -835,6 +851,45 @@ export function applyCampaignPatch(
     world: nextWorld,
     updatedAt: now,
   };
+}
+
+/**
+ * TABS-01: explicit chronicle events from the patch, then the automatic
+ * hooks (arrival, quest lifecycle, level-up, unexplained new items).
+ */
+function advanceChronicle(
+  campaign: CampaignSave,
+  world: CampaignWorldState,
+  nextWorld: CampaignWorldState,
+  session: SessionState,
+  party: Party,
+  patch: CampaignStatePatch,
+): ChronicleState {
+  const turn = Math.max(0, Math.floor(Number(session.turn) || 0));
+  let chronicle = applyChroniclePatch(world.chronicle, patch, turn);
+  const explained = (
+    patch.itemObtained === undefined
+      ? []
+      : Array.isArray(patch.itemObtained)
+        ? patch.itemObtained
+        : [patch.itemObtained]
+  ).map((e: ItemObtainedEvent) => e.itemId);
+  const derived = deriveChronicleEvents(chronicle, {
+    prevLocationId: campaign.session.locationId ?? null,
+    nextLocationId: session.locationId ?? null,
+    prevQuests: world.quests,
+    nextQuests: nextWorld.quests,
+    prevLevel: campaign.party[0]?.level ?? null,
+    nextLevel: party[0]?.level ?? null,
+    pcName: party[0]?.name ?? null,
+    prevItemIds: world.inventory.items.map((i) => i.id),
+    nextItems: nextWorld.inventory.items,
+    explainedItemIds: explained,
+    questXp: questXpFor,
+    arrivalTrigger: (id) => QUEST_ARRIVAL_TRIGGERS[id] ?? null,
+  });
+  for (const p of derived) chronicle = applyChroniclePatch(chronicle, p, turn);
+  return chronicle;
 }
 
 /**

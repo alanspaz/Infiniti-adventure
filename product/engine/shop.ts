@@ -18,6 +18,7 @@ import {
 } from './campaignState';
 import { itemNarrationPatch, itemTraits } from './items';
 import { createStarterMap } from './map';
+import { npcForMerchant } from './npcs';
 import type { CampaignSave } from './save';
 
 export type MerchantDef = {
@@ -352,6 +353,15 @@ export function resolveTrade(state: CampaignState, req: TradeRequest): TradeResu
         merchants: {
           [def.id]: { gold: m.gold + price, stock: takeOne(m.stock, item.id), asOfTurn: m.asOfTurn ?? state.session.turn },
         },
+        // TABS-01: where/how it was obtained + the keeper remembers the sale.
+        itemObtained: {
+          itemId: item.id,
+          name: item.name,
+          how: 'bought',
+          source: def.keeper,
+          locationId: state.locationId,
+        },
+        ...keeperNote(def.id, state.locationId, `Sold you ${articled(item.name)} for ${price} gold.`),
       },
       narration: `${def.keeper} takes your ${price} gold and hands over the ${item.name.toLowerCase()}.`,
       playerLine: `Buy ${item.name}`,
@@ -379,10 +389,25 @@ export function resolveTrade(state: CampaignState, req: TradeRequest): TradeResu
       merchants: {
         [def.id]: { gold: m.gold - price, stock: giveOne(m.stock, item), asOfTurn: m.asOfTurn ?? state.session.turn },
       },
+      ...keeperNote(def.id, state.locationId, `Bought your ${item.name.toLowerCase()} for ${price} gold.`),
     },
     narration: `${def.keeper} turns the ${item.name.toLowerCase()} over once, then counts ${price} gold into your palm.`,
     playerLine: `Sell ${item.name}`,
   };
+}
+
+function articled(name: string): string {
+  return /^[aeiou]/i.test(name) ? `an ${name.toLowerCase()}` : `a ${name.toLowerCase()}`;
+}
+
+/** TABS-01: a relationship note on the NPC behind a merchant. */
+function keeperNote(
+  merchantId: string,
+  locationId: string | null,
+  note: string,
+): Pick<CampaignStatePatch, 'npcMet'> {
+  const npc = npcForMerchant(merchantId);
+  return npc ? { npcMet: { id: npc.id, locationId, note } } : {};
 }
 
 export function applyTrade(

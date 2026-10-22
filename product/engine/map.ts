@@ -1,3 +1,4 @@
+import { normalizeChronicle, recordArrival } from './chronicle';
 import {
   touchCampaign,
   type CampaignSave,
@@ -219,7 +220,19 @@ export function setCampaignLocation(
     ...campaign.session,
     locationId,
   };
-  return touchCampaign({ ...campaign, session });
+  // TABS-01: every arrival is recorded (visited place, people here, what they mention).
+  const world =
+    campaign.world && locationId
+      ? {
+          ...campaign.world,
+          chronicle: recordArrival(
+            normalizeChronicle(campaign.world.chronicle),
+            locationId,
+            session.turn,
+          ),
+        }
+      : campaign.world;
+  return touchCampaign({ ...campaign, session, ...(world ? { world } : {}) });
 }
 
 /** Place campaign at a graph's start node. */
