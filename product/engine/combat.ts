@@ -28,10 +28,36 @@ import {
   itemTraits,
   resolveItemAction,
   applyItemAction,
+  withBeatPatch,
+  type BeatExtras,
   type ItemActionRequest,
   type ItemActionResult,
 } from './items';
 import { placePhrase } from './chronicle';
+import {
+  COMBAT_ACTION,
+  COMBAT_BLOCKED,
+  COMBAT_FOE,
+  DEFEAT_WAKE,
+  LEVEL_READY,
+  PLACE_VICTORY_NOTE,
+  SEEK_NO_FOES,
+  type Bank,
+  type CombatPath,
+  type FoeId,
+  type LineContext,
+  type RecentEvent,
+} from './narration/lineBanks';
+import {
+  foeArticled,
+  foeTokens,
+  mechanicsLineFor,
+  recordCtxFor,
+  recordLine,
+  voiceFor,
+  type MechanicsDelta,
+  type Voice,
+} from './narration/voice';
 import { xpForLevel } from './progression';
 import { createSeededRng, type Rng } from './rng';
 import type { CampaignSave } from './save';
@@ -51,6 +77,12 @@ export type CombatTurnResult = {
   narration: string | null;
   /** Compact dice line(s) for the Tale (shown as the beat's check line). */
   rollLine: string | null;
+  /** NARR-04: numbers under the prose (HP, XP, gold, loot). Prose has none. */
+  mechanicsLine?: string | null;
+  /** NARR-04: anti-repeat ids for the lines picked this round. */
+  narrFlags?: Record<string, string>;
+  /** NARR-04: what just happened (justFought / justLost). */
+  event?: RecentEvent | null;
 };
 
 /** Where a knocked-out hero wakes up (inn hearth). */
@@ -149,6 +181,8 @@ export function spellProfile(state: CampaignState): PlayerAttackProfile {
 type AttackRoll = {
   hit: boolean;
   crit: boolean;
+  /** Natural 1 (NARR-04: drives the fumble lines). */
+  fumble?: boolean;
   damage: number;
   line: string;
 };
@@ -179,16 +213,10 @@ function attackRoll(
   const hit = face !== 1 && (crit || total >= ac);
   const head = `${who}🎲 ${faces}${fmtMod(toHit)}=${total} vs AC ${ac}`;
   if (!hit) {
-    return { hit, crit, damage: 0, line: `${head} — ${face === 1 ? 'fumble' : 'miss'}` };
+    return { hit, crit, fumble: face === 1, damage: 0, line: `${head} — ${face === 1 ? 'fumble' : 'miss'}` };
   }
   const dmg = rollDamage(damage, damageMod, crit, rng);
   return { hit, crit, damage: dmg.total, line: `${head} — ${crit ? 'CRIT' : 'hit'}, ${dmg.total} dmg` };
-}
-
-function hashPick(pool: string[], seed: string): string {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  return pool[h % pool.length]!;
 }
 
 function reject(message: string): CombatTurnResult {
@@ -197,6 +225,16 @@ function reject(message: string): CombatTurnResult {
 
 function lowerName(foe: FoeState): string {
   return `the ${foe.name.toLowerCase()}`;
+}
+
+/** Per-foe bank for a path, then the generic one. */
+function foeBanks(foeId: string, path: CombatPath): Bank[] {
+  const own = COMBAT_FOE[foeId as FoeId]?.[path];
+  return own ? [own, COMBAT_FOE.generic[path]] : [COMBAT_FOE.generic[path]];
+}
+
+function foeSay(voice: Voice, foe: FoeState, path: CombatPath, ctx?: Partial<LineContext>): string | null {
+  return voice.say(`combat.${path}`, foeBanks(foe.id, path), foeTokens(foe.name), ctx ? { ctx } : {});
 }
 
 /**
@@ -219,10 +257,15 @@ export function resolveCombatTurn(
   let stance: CombatState['stance'] = 'none';
   const lines: string[] = [];
   const prose: string[] = [];
-  const seed = `${foe.id}:${combat.round}:${kind}`;
   const foeName = lowerName(foe);
   const patch: CampaignStatePatch = {};
   const caster = !state.character || isSpellcasterClass(state.character.className);
+  // NARR-04: seeded voice (separate from the dice rng); {weapon} = "your shortsword" / "your fists".
+  const voice = voiceFor(state);
+  const notes: string[] = [];
+  const extraFlags: Record<string, string> = {};
+  const hpStart = hp;
+  let qtyLeft: { name: string; qty: number } | undefined;
 
   switch (kind) {
     case 'attack':
@@ -232,48 +275,28 @@ export function resolveCombatTurn(
       lines.push(r.line);
       if (r.hit) {
         foe = { ...foe, hp: Math.max(0, foe.hp - r.damage) };
-        prose.push(
-          kind === 'attack'
-            ? hashPick(
-                r.crit
-                  ? [`Your ${prof.label} finds the perfect opening — a brutal blow to ${foeName}.`]
-                  : [
-                      `Your ${prof.label} bites into ${foeName}.`,
-                      `You drive your ${prof.label} home; ${foeName} reels.`,
-                      `A clean strike with your ${prof.label} — ${foeName} staggers.`,
-                    ],
-                seed,
-              )
-            : !caster
-              ? `You're no spellcaster — you scrape up a feeble spark and flick it at ${foeName}${r.crit ? '; by sheer luck it flares' : ''}. It stings.`
-              : r.crit
-                ? `Your spark bolt detonates against ${foeName} in a blinding flash.`
-                : `A spark bolt cracks from your fingers and scorches ${foeName}.`,
-        );
-      } else {
-        prose.push(
-          kind === 'attack'
-            ? hashPick(
-                [
-                  `${cap(foeName)} twists aside and your ${prof.label} cuts only air.`,
-                  `Your ${prof.label} glances off — no purchase.`,
-                ],
-                seed,
-              )
-            : !caster
-              ? `You're no spellcaster — the feeble spark you scrape up fizzles before it reaches ${foeName}.`
-              : `Your spark bolt sputters wide of ${foeName}.`,
-        );
       }
+      const ft = foeTokens(foe.name);
+      let line: string | null;
+      if (kind === 'attack') {
+        line = foeSay(voice, foe, r.crit ? 'crit' : r.hit ? 'hit' : r.fumble ? 'fumble' : 'miss');
+      } else {
+        const spell = r.crit ? 'castCrit' : r.hit ? 'castHit' : 'castMiss';
+        const lead = caster ? null : voice.say('combat.noCaster', COMBAT_ACTION.noCaster, ft);
+        const body = voice.say(`combat.${spell}`, COMBAT_ACTION[spell], ft);
+        line = [lead, body].filter(Boolean).join(' ') || null;
+      }
+      if (line) prose.push(line);
       break;
     }
     case 'defend':
       stance = 'defend';
-      prose.push(`You set your feet and raise your guard (+${DEFEND_AC_BONUS} AC this round).`);
+      prose.push(voice.say('combat.defend', COMBAT_ACTION.defend, foeTokens(foe.name)) ?? 'You set your feet and raise your guard.');
+      notes.push(`Defend · +${DEFEND_AC_BONUS} AC this round`);
       break;
     case 'dodge':
       stance = 'dodge';
-      prose.push(`You stay light and moving, making yourself hard to pin down.`);
+      prose.push(voice.say('combat.dodge', COMBAT_ACTION.dodge, foeTokens(foe.name)) ?? 'You stay light and moving.');
       break;
     case 'use-item': {
       const heal = state.inventory.items.find((i) => itemTraits(i).effect?.type === 'heal');
@@ -284,6 +307,9 @@ export function resolveCombatTurn(
       if (used.patch.inventory) patch.inventory = used.patch.inventory;
       lines.push(used.message);
       prose.push(used.narration ?? `You use the ${heal.name.toLowerCase()}.`);
+      Object.assign(extraFlags, used.narrFlags ?? {});
+      const left = (patch.inventory?.items ?? []).find((i) => i.id === heal.id)?.qty ?? 0;
+      qtyLeft = { name: heal.name, qty: left };
       break;
     }
     case 'pass':
@@ -301,11 +327,14 @@ export function resolveCombatTurn(
           outcome: 'fled',
           message: `You escape ${foeName}.`,
           patch: { ...patch, combat: { ...exit, hp } },
-          narration: `You break away and run until ${foeName} gives up the chase.`,
+          narration: foeSay(voice, foe, 'fleeOk') ?? `You break away and run until ${foeName} gives up the chase.`,
           rollLine: lines.join(' · '),
+          mechanicsLine: null,
+          narrFlags: { ...voice.flags(), ...extraFlags },
+          event: 'justFought',
         };
       }
-      prose.push(`You try to break away, but ${foeName} cuts you off.`);
+      prose.push(foeSay(voice, foe, 'fleeFail') ?? `You try to break away, but ${foeName} cuts you off.`);
       break;
     }
   }
@@ -321,6 +350,15 @@ export function resolveCombatTurn(
       ...(foe.gold > 0 ? [`${foe.gold} gold`] : []),
       ...(foe.loot ? [foe.loot.name] : []),
     ].join(', ');
+    const has = { loot: Boolean(foe.loot), goldGained: foe.gold > 0, goldLost: false };
+    const win = foeSay(voice, foe, 'victory', { has });
+    const ready = canLevel ? voice.say('combat.levelReady', LEVEL_READY, {}) : null;
+    const rc = recordCtxFor(state.campaignId, state.playstylePackId);
+    const placeNote = state.locationId
+      ? recordLine(PLACE_VICTORY_NOTE, rc, `victory:${state.locationId}:${foe.id}:${state.session.turn}`, {
+          foeA: foeArticled(foe.name),
+        })
+      : null;
     return {
       ok: true,
       outcome: 'victory',
@@ -331,8 +369,13 @@ export function resolveCombatTurn(
         grantXp: foe.xp,
         ...(foe.gold > 0 ? { grantGold: foe.gold } : {}),
         ...(foe.loot ? { addItem: { ...foe.loot } } : {}),
-        // TABS-01: the deed, where the loot came from, and a note on the place.
-        deed: { kind: 'victory', text: `Defeated ${articledFoe(foe.name)}${state.locationId ? ` in ${placePhrase(state.locationId)}` : ''}` },
+        // TABS-01: the deed (structured, NARR-04), where the loot came from, and a note on the place.
+        deed: {
+          kind: 'victory',
+          text: `Defeated ${foeArticled(foe.name)}${state.locationId ? ` in ${placePhrase(state.locationId)}` : ''}`,
+          foeName: foe.name,
+          ...(state.locationId ? { locationId: state.locationId } : {}),
+        },
         ...(foe.loot
           ? {
               itemObtained: {
@@ -345,11 +388,19 @@ export function resolveCombatTurn(
             }
           : {}),
         ...(state.locationId
-          ? { placeLearned: { id: state.locationId, note: `You defeated ${articledFoe(foe.name)} here.` } }
+          ? { placeLearned: { id: state.locationId, ...(placeNote ? { note: placeNote } : {}), victory: true } }
           : {}),
       },
-      narration: `${prose.join(' ')} ${cap(foeName)} falls and does not rise. You gain ${rewards}.${canLevel ? ' You feel ready to level up (see Character).' : ''}`,
+      narration: [...prose, win ?? `${cap(foeName)} falls and does not rise.`, ...(ready ? [ready] : [])].join(' '),
       rollLine: lines.join(' · '),
+      mechanicsLine: mechanicsLineFor({
+        xp: foe.xp,
+        ...(foe.gold > 0 ? { gold: foe.gold } : {}),
+        ...(foe.loot ? { itemsGained: [foe.loot.name] } : {}),
+        ...(canLevel ? { notes: ['Level up ready'] } : {}),
+      }),
+      narrFlags: { ...voice.flags(), ...extraFlags },
+      event: 'justFought',
     };
   }
 
@@ -359,24 +410,10 @@ export function resolveCombatTurn(
   lines.push(fr.line);
   if (fr.hit) {
     hp = Math.max(0, hp - fr.damage);
-    prose.push(
-      fr.crit
-        ? `${cap(foeName)} lands a savage hit (${fr.damage}).`
-        : hashPick(
-            [
-              `${cap(foeName)} strikes back and catches you (${fr.damage}).`,
-              `${cap(foeName)} lunges — it connects (${fr.damage}).`,
-            ],
-            seed,
-          ),
-    );
-  } else {
-    prose.push(
-      stance === 'none'
-        ? `${cap(foeName)} lashes out and misses.`
-        : `${cap(foeName)} attacks, but your ${stance === 'defend' ? 'guard holds' : 'footwork carries you clear'}.`,
-    );
   }
+  const lowNow = maxHp > 0 && hp / maxHp <= 0.5;
+  const foeLine = foeSay(voice, foe, fr.crit ? 'foeCrit' : fr.hit ? 'foeHit' : 'foeMiss', { hpLow: lowNow });
+  prose.push(foeLine ?? (fr.hit ? `${cap(foeName)} catches you.` : `${cap(foeName)} misses.`));
 
   // Defeat → knocked out, wake at the hearth: half HP, lose half your gold.
   if (hp <= 0) {
@@ -393,8 +430,16 @@ export function resolveCombatTurn(
         ...(lost > 0 ? { spendGold: lost } : {}),
         locationId: RECOVERY_LOCATION_ID,
       },
-      narration: `${prose.join(' ')} The world goes dark. … You wake to hearth-warmth in the Copper Kettle's common room — someone hauled you back.${lost > 0 ? ` Your purse is ${lost} gold lighter.` : ''}`,
+      narration: [
+        ...prose.slice(0, -1),
+        foeSay(voice, foe, 'defeat') ?? 'The world goes dark.',
+        voice.say('combat.wake', DEFEAT_WAKE, {}, { ctx: { has: { loot: false, goldGained: false, goldLost: lost > 0 } } }) ??
+          "You wake in the Copper Kettle's common room.",
+      ].join(' '),
       rollLine: lines.join(' · '),
+      mechanicsLine: mechanicsLineFor({ notes: ['Knocked out'], hp: wakeHp, hpMax: maxHp, ...(lost > 0 ? { gold: -lost } : {}) }),
+      narrFlags: { ...voice.flags(), ...extraFlags },
+      event: 'justLost',
     };
   }
 
@@ -421,7 +466,25 @@ export function resolveCombatTurn(
     },
     narration: prose.join(' '),
     rollLine: lines.join(' · '),
+    mechanicsLine: roundMechanics(hp, hpStart, maxHp, qtyLeft, notes),
+    narrFlags: { ...voice.flags(), ...extraFlags },
+    event: 'justFought',
   };
+}
+
+function roundMechanics(
+  hp: number,
+  hpStart: number,
+  maxHp: number,
+  qtyLeft: { name: string; qty: number } | undefined,
+  notes: string[],
+): string | null {
+  const d: MechanicsDelta = {
+    ...(hp !== hpStart ? { hpChange: hp - hpStart, hp, hpMax: maxHp } : {}),
+    ...(qtyLeft ? { qtyLeft } : {}),
+    ...(notes.length ? { notes } : {}),
+  };
+  return mechanicsLineFor(d);
 }
 
 function cap(s: string): string {
@@ -461,20 +524,35 @@ function appendBeat(
   playerLine: string | null,
   rollLine: string | null,
   now: number,
+  extras: BeatExtras = {},
 ): CampaignSave {
   const state = campaignToState(campaign);
-  const beat = itemNarrationPatch(state, narration, playerLine, now);
+  const beat = itemNarrationPatch(state, narration, playerLine, now, {
+    ...extras,
+    turnAfter: campaign.session.turn + 1,
+  });
   const beats = beat.storyBeats!;
   if (rollLine && beats.length > 0) {
     beats[beats.length - 1] = { ...beats[beats.length - 1]!, checkLine: rollLine };
   }
   // QA-01 P1-7: every combat beat advances the turn clock (fresh RNG next round).
   return applyCampaignPatch(campaign, {
-    ...patch,
-    ...beat,
+    ...withBeatPatch(patch, beat),
     storyBeats: beats,
     session: { ...(patch.session ?? {}), turn: campaign.session.turn + 1 },
   });
+}
+
+function extrasOf(r: { mechanicsLine?: string | null; narrFlags?: Record<string, string>; event?: RecentEvent | null }): BeatExtras {
+  return { mechanicsLine: r.mechanicsLine ?? null, narrFlags: r.narrFlags ?? {}, event: r.event ?? null };
+}
+
+/** Rejections carry no numbers already; "no healing items" keeps its wording, others use COMBAT_BLOCKED. */
+function rejectionProse(state: CampaignState, message: string): string {
+  if (/\d/.test(message) && state.combat.foe) {
+    return voiceFor(state).say('combat.blocked', COMBAT_BLOCKED, foeTokens(state.combat.foe.name)) ?? 'Not now.';
+  }
+  return message;
 }
 
 const ACTION_LABEL: Record<CombatActionKind, string> = {
@@ -502,7 +580,7 @@ export function applyCombatTurn(
         campaign: appendBeat(
           campaign,
           {},
-          result.message,
+          rejectionProse(state, result.message),
           opts.playerLine ?? ACTION_LABEL[kind],
           null,
           opts.now ?? Date.now(),
@@ -520,6 +598,7 @@ export function applyCombatTurn(
       opts.playerLine ?? ACTION_LABEL[kind],
       result.rollLine,
       opts.now ?? Date.now(),
+      extrasOf(result),
     ),
     result,
   };
@@ -572,7 +651,7 @@ export function applyCombatIntent(
     if (!turn.result.ok) {
       // Honest refusal still answers in the Tale (never silent).
       return {
-        campaign: appendBeat(campaign, {}, turn.result.message, text, null, now),
+        campaign: appendBeat(campaign, {}, rejectionProse(state, turn.result.message), text, null, now),
         result: turn.result,
       };
     }
@@ -582,24 +661,42 @@ export function applyCombatIntent(
   if (!detectCombatEnterFromAction(text) || NOT_A_FIGHT_RE.test(text)) return null;
   const seeking = SEEK_RE.test(text) && !/\b(?:attack|strike|stab|slash|shoot|punch|kick)\b/i.test(text);
   if (seeking && !hasWildFoes(loc)) {
+    const voice = voiceFor(state);
     const narration =
-      'Nothing here wants a fight. Trouble roams the Ashen Fields and the vale road — and something scratches in the Kettle cellar.';
+      voice.say('combat.seekNone', SEEK_NO_FOES, {}) ??
+      'Nothing here wants a fight. Trouble roams the Ashen Fields and the vale road, and something scratches in the Kettle cellar.';
     return {
-      campaign: appendBeat(campaign, {}, narration, text, null, now),
+      campaign: appendBeat(campaign, {}, narration, text, null, now, { narrFlags: voice.flags() }),
       result: { ok: false, outcome: 'rejected', message: narration, patch: null, narration, rollLine: null },
     };
   }
   const start = enterCombatPatch(state.combat, 'Combat begins', loc, rng());
   const foe = start.combat!.foe!;
-  const lower = foe.name.toLowerCase();
-  const intro = `${/^[aeiou]/.test(lower) ? 'An' : 'A'} ${lower} squares up to you — ${foe.hp} HP, AC ${foe.ac}.`;
+  // NARR-04: the intro is prose only; HP / AC go on the mechanics line.
+  const introVoice = voiceFor(state);
+  const intro = foeSay(introVoice, foe, 'intro') ?? `${cap(foeArticled(foe.name))} squares up to you.`;
+  const introMechanics = mechanicsLineFor({ foeStats: { name: foe.name, hp: foe.hp, ac: foe.ac } });
   let next = applyCampaignPatch(campaign, start);
   if (seeking) {
-    const narration = `${intro} Steel yourself: Attack, Cast, Defend, Dodge, Use Item, or Flee.`;
-    next = appendBeat(next, {}, narration, text, null, now);
+    const narration = intro;
+    next = appendBeat(next, {}, narration, text, null, now, {
+      mechanicsLine: introMechanics,
+      narrFlags: introVoice.flags(),
+      event: 'justFought',
+    });
     return {
       campaign: next,
-      result: { ok: true, outcome: 'continue', message: `Fight: ${foe.name}`, patch: start, narration, rollLine: null },
+      result: {
+        ok: true,
+        outcome: 'continue',
+        message: `Fight: ${foe.name}`,
+        patch: start,
+        narration,
+        rollLine: null,
+        mechanicsLine: introMechanics,
+        narrFlags: introVoice.flags(),
+        event: 'justFought',
+      },
     };
   }
   // Attack verb: open the fight and strike first in the same beat.
@@ -612,9 +709,13 @@ export function applyCombatIntent(
     const s = campaignToState(turn.campaign);
     const beats = [...s.storyBeats];
     const last = beats[beats.length - 1]!;
-    beats[beats.length - 1] = { ...last, prose: `${intro} ${last.prose}` };
+    const ml = [introMechanics, last.mechanicsLine].filter(Boolean).join(' · ');
+    beats[beats.length - 1] = { ...last, prose: `${intro} ${last.prose}`, ...(ml ? { mechanicsLine: ml } : {}) };
     return {
-      campaign: applyCampaignPatch(turn.campaign, { storyBeats: beats }),
+      campaign: applyCampaignPatch(turn.campaign, {
+        storyBeats: beats,
+        flags: { ...introVoice.flags(), ...turn.campaign.flags, ...introOnlyFlags(introVoice) },
+      }),
       result: turn.result,
     };
   }
@@ -644,14 +745,21 @@ export function applyItemActionWithTurn(
   const rng = opts.rng ?? combatRngFor(campaign);
   const turn = resolveCombatTurn(campaignToState(mid), 'pass', rng);
   const narration = [item.narration ?? item.message, turn.narration].filter(Boolean).join(' ');
+  const mechanicsLine = [item.mechanicsLine, turn.mechanicsLine].filter(Boolean).join(' · ') || null;
   return {
-    campaign: appendBeat(mid, turn.patch ?? {}, narration, opts.playerLine ?? item.playerLine, turn.rollLine, now),
+    campaign: appendBeat(mid, turn.patch ?? {}, narration, opts.playerLine ?? item.playerLine, turn.rollLine, now, {
+      mechanicsLine,
+      narrFlags: { ...(item.narrFlags ?? {}), ...(turn.narrFlags ?? {}) },
+      event: turn.event ?? 'justFought',
+    }),
     result: { ...item, message: `${item.message} ${turn.message}`.trim() },
     turn,
   };
 }
 
-function articledFoe(name: string): string {
-  const n = name.toLowerCase();
-  return /^[aeiou]/.test(n) ? `an ${n}` : `a ${n}`;
+/** Only the intro path's anti-repeat id (the round's own ids are already on the save). */
+function introOnlyFlags(v: Voice): Record<string, string> {
+  const f = v.flags();
+  const k = 'narr.last.combat.intro';
+  return f[k] ? { [k]: f[k]! } : {};
 }

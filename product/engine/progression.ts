@@ -11,7 +11,9 @@ import {
   type CampaignStatePatch,
 } from './campaignState';
 import { deriveStats } from './derived';
-import { itemNarrationPatch } from './items';
+import { itemNarrationPatch, withBeatPatch } from './items';
+import { COMBAT_BLOCKED, LEVEL_UP } from './narration/lineBanks';
+import { foeTokens, mechanicsLineFor, voiceFor } from './narration/voice';
 import type { CampaignSave } from './save';
 import type { AbilityKey, CharacterSheet } from './types';
 
@@ -63,6 +65,10 @@ export type ProgressionResult = {
   patch: CampaignStatePatch | null;
   narration: string | null;
   playerLine: string | null;
+  /** NARR-04: numbers line under the prose (prose itself is number-free). */
+  mechanicsLine?: string | null;
+  /** NARR-04: anti-repeat ids for the picked line. */
+  narrFlags?: Record<string, string>;
 };
 
 const ABILITY_NAMES: Record<AbilityKey, string> = {
@@ -74,8 +80,13 @@ const ABILITY_NAMES: Record<AbilityKey, string> = {
   charisma: 'Charisma',
 };
 
-function reject(kind: ProgressionRequest['kind'], message: string): ProgressionResult {
-  return { ok: false, kind, message, patch: null, narration: null, playerLine: null };
+function reject(
+  kind: ProgressionRequest['kind'],
+  message: string,
+  narration: string | null = null,
+  mechanicsLine: string | null = null,
+): ProgressionResult {
+  return { ok: false, kind, message, patch: null, narration, playerLine: null, mechanicsLine };
 }
 
 /**
@@ -108,25 +119,41 @@ export function resolveProgressionAction(
   const pc = state.character;
   if (!pc) return reject(req.kind, 'No character to upgrade.');
   if (state.combat.inCombat) {
-    return reject(req.kind, 'Not mid-fight — finish the combat first.');
+    const v = voiceFor(state);
+    const foe = foeTokens(state.combat.foe?.name);
+    return {
+      ...reject(req.kind, 'Not mid-fight — finish the combat first.', v.say('combat.blocked', COMBAT_BLOCKED, foe)),
+      narrFlags: v.flags(),
+    };
   }
   const prog = state.progression;
 
   if (req.kind === 'level-up') {
     if (pc.level >= MAX_LEVEL) {
-      return reject('level-up', `Already at the level cap (${MAX_LEVEL}).`);
+      return reject(
+        'level-up',
+        `Already at the level cap (${MAX_LEVEL}).`,
+        "You've grown as far as this road can take you.",
+        `Level ${pc.level} · Level cap`,
+      );
     }
     const need = xpForLevel(pc.level + 1);
     if (prog.xp < need) {
       return reject(
         'level-up',
         `Not enough XP: ${prog.xp}/${need} for level ${pc.level + 1}.`,
+        "You're not ready yet. More fights and quests will get you there.",
+        `XP ${prog.xp}/${need}`,
       );
     }
     const next: CharacterSheet = { ...pc, level: pc.level + 1 };
     const hp = hpAfterSheetChange(state, pc, next);
     const gained = hp.maxHp - deriveStats(pc).maxHitPoints;
     const points = prog.unspentPoints + POINTS_PER_LEVEL;
+    const voice = voiceFor(state);
+    const narration =
+      voice.say('level.up', LEVEL_UP, {}) ??
+      `${pc.name.split(/\s+/)[0]} feels the change settle in: tougher, quicker, readier.`;
     return {
       ok: true,
       kind: 'level-up',
@@ -136,8 +163,15 @@ export function resolveProgressionAction(
         combat: { ...state.combat, hp: hp.hp, maxHp: hp.maxHp },
         progression: { unspentPoints: points },
       },
-      narration: `Something settles in you — every road walked and every close call adds up. ${pc.name} reaches level ${next.level}: tougher (${hp.maxHp} max HP) and ready to grow.`,
+      narration,
       playerLine: 'Level up',
+      mechanicsLine: mechanicsLineFor({
+        level: next.level,
+        maxHp: hp.maxHp,
+        ...(gained ? { maxHpGain: gained } : {}),
+        abilityPoints: POINTS_PER_LEVEL,
+      }),
+      narrFlags: voice.flags(),
     };
   }
 
@@ -145,13 +179,19 @@ export function resolveProgressionAction(
   const ability = req.ability;
   if (!(ability in pc.abilities)) return reject('spend-point', 'Unknown ability.');
   if (prog.unspentPoints < 1) {
-    return reject('spend-point', 'No ability points to spend — level up first.');
+    return reject(
+      'spend-point',
+      'No ability points to spend — level up first.',
+      'You have nothing left to put into it yet. Level up first.',
+    );
   }
   const score = pc.abilities[ability];
   if (score >= ABILITY_SCORE_CAP) {
     return reject(
       'spend-point',
       `${ABILITY_NAMES[ability]} is already at the cap (${ABILITY_SCORE_CAP}).`,
+      `Your ${ABILITY_NAMES[ability].toLowerCase()} can't go any higher.`,
+      `${ABILITY_NAMES[ability]} ${score} · Cap`,
     );
   }
   const next: CharacterSheet = {
@@ -169,8 +209,9 @@ export function resolveProgressionAction(
       combat: { ...state.combat, hp: hp.hp, maxHp: hp.maxHp },
       progression: { unspentPoints: left },
     },
-    narration: null,
+    narration: `You put the work in, and your ${ABILITY_NAMES[ability].toLowerCase()} improves.`,
     playerLine: null,
+    mechanicsLine: `${ABILITY_NAMES[ability]} ${score} → ${score + 1} · ${left} ability point${left === 1 ? '' : 's'} left`,
   };
 }
 
@@ -183,11 +224,15 @@ export function applyProgressionAction(
   const result = resolveProgressionAction(state, req);
   if (!result.ok || !result.patch) return { campaign, result };
   let patch = result.patch;
-  if (result.narration) {
-    patch = {
-      ...patch,
-      ...itemNarrationPatch(state, result.narration, result.playerLine, now),
-    };
+  // Spending a point on the Character sheet stays silent in the Tale (as before).
+  if (result.narration && result.kind === 'level-up') {
+    patch = withBeatPatch(
+      patch,
+      itemNarrationPatch(state, result.narration, result.playerLine, now, {
+        mechanicsLine: result.mechanicsLine ?? null,
+        narrFlags: result.narrFlags ?? {},
+      }),
+    );
   }
   return { campaign: applyCampaignPatch(campaign, patch), result };
 }

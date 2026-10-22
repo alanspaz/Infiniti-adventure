@@ -17,6 +17,19 @@ import {
 } from './campaignState';
 import { abilityModifier } from './derived';
 import type { CampaignSave, StoryBeatRecord } from './save';
+import {
+  EQUIP_SWAP_PREFIX,
+  ITEM_DROP,
+  ITEM_EQUIP,
+  ITEM_QUEST_LOCKED,
+  ITEM_UNEQUIP,
+  ITEM_USE_FULL_HP,
+  ITEM_USE_HEAL,
+  ITEM_USE_NOTHING,
+  type ItemNameKey,
+  type RecentEvent,
+} from './narration/lineBanks';
+import { eventFlags, itemWord, mechanicsLineFor, placeRefFor, voiceFor, type Voice } from './narration/voice';
 
 export type ItemActionKind = 'inspect' | 'use' | 'equip' | 'move' | 'drop';
 
@@ -38,6 +51,10 @@ export type ItemActionResult = {
   narration: string | null;
   /** Player-side chat line paired with the narration. */
   playerLine: string | null;
+  /** NARR-04: numbers for the beat (rendered under the prose). */
+  mechanicsLine?: string | null;
+  /** NARR-04: `narr.last.*` anti-repeat flags for the lines picked. */
+  narrFlags?: Record<string, string>;
 };
 
 /** Keep in step with SceneScreen MAX_STORY_BEATS. */
@@ -154,21 +171,22 @@ function findItem(state: CampaignState, itemId: string): InventoryItem | null {
   return state.inventory.items.find((i) => i.id === itemId) ?? null;
 }
 
-function hashString(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return h;
-}
+const nameKey = (item: InventoryItem): ItemNameKey => item.name.trim().toLowerCase() as ItemNameKey;
 
-function pick(pool: string[], seed: string): string {
-  return pool[hashString(seed) % pool.length]!;
+/** Item line from a per-name bank with a generic fallback; `{item}` = lower-case name. */
+function itemLine(voice: Voice, path: string, banks: Parameters<Voice['say']>[1], item: InventoryItem, state: CampaignState): string {
+  return (
+    voice.say(path, banks, { item: itemWord(item.name), place: placeRefFor(state.locationId) }) ??
+    `You see to the ${itemWord(item.name)}.`
+  );
 }
 
 function reject(
   kind: ItemActionKind,
   message: string,
+  narration: string | null = null,
 ): ItemActionResult {
-  return { ok: false, kind, message, patch: null, narration: null, playerLine: null };
+  return { ok: false, kind, message, patch: null, narration, playerLine: null };
 }
 
 /** Read-only description of an item (never mutates). */
@@ -208,7 +226,7 @@ export function resolveItemAction(
   if (!item) return reject(req.kind, 'That item is no longer in your pack.');
   const items = state.inventory.items;
   const traits = itemTraits(item);
-  const seed = `${item.id}:${state.storyMeta.beatCount}:${state.storyBeats.length}`;
+  const voice = voiceFor(state);
 
   switch (req.kind) {
     case 'inspect':
@@ -251,15 +269,9 @@ export function resolveItemAction(
           kind: 'equip',
           message: `Unequipped ${item.name}.`,
           patch: withItems(next),
-          narration: pick(
-            [
-              `You set the ${item.name.toLowerCase()} aside and stow it in your pack.`,
-              `The ${item.name.toLowerCase()} comes off; you pack it away with care.`,
-              `You free yourself of the ${item.name.toLowerCase()} and tuck it into your gear.`,
-            ],
-            seed,
-          ),
+          narration: itemLine(voice, 'item.unequip', ITEM_UNEQUIP, item, state),
           playerLine: `Unequip ${item.name}`,
+          narrFlags: voice.flags(),
         };
       }
       let swapped: InventoryItem | null = null;
@@ -273,33 +285,11 @@ export function resolveItemAction(
       });
       const swapName = (swapped as InventoryItem | null)?.name;
       const verb = traits.slot === 'weapon' ? 'wield' : 'wear';
-      const lower = item.name.toLowerCase();
-      const base =
-        traits.slot === 'weapon'
-          ? pick(
-              [
-                `You draw the ${lower} and test its weight — it settles into your grip.`,
-                `The ${lower} comes up in your hand, ready.`,
-                `You buckle the ${lower} where you can reach it fast.`,
-              ],
-              seed,
-            )
-          : traits.slot === 'armor'
-            ? pick(
-                [
-                  `You shrug into the ${lower} and cinch the straps tight.`,
-                  `The ${lower} settles over your shoulders, snug and familiar.`,
-                  `Buckle by buckle, you don the ${lower}.`,
-                ],
-                seed,
-              )
-            : pick(
-                [
-                  `You sling the ${lower} onto your arm.`,
-                  `The ${lower} locks onto your forearm with a solid thunk.`,
-                ],
-                seed,
-              );
+      const slot = traits.slot as 'weapon' | 'armor' | 'shield';
+      const base = itemLine(voice, `item.equip.${slot}`, [ITEM_EQUIP[nameKey(item)], ITEM_EQUIP[slot]], item, state);
+      const swapLead = swapName
+        ? voice.sayString('item.equip.swap', EQUIP_SWAP_PREFIX, { item: itemWord(swapName) })
+        : null;
       return {
         ok: true,
         kind: 'equip',
@@ -307,10 +297,9 @@ export function resolveItemAction(
           ? `Equipped ${item.name} (replaced ${swapName}).`
           : `Equipped ${item.name}.`,
         patch: withItems(next),
-        narration: swapName
-          ? `You put away the ${swapName.toLowerCase()}. ${base}`
-          : base,
+        narration: swapLead ? `${swapLead} ${base}` : base,
         playerLine: `${verb === 'wield' ? 'Wield' : 'Wear'} ${item.name}`,
+        narrFlags: voice.flags(),
       };
     }
 
@@ -319,7 +308,12 @@ export function resolveItemAction(
         const maxHp = state.combat.maxHp ?? 10;
         const hp = state.combat.hp ?? maxHp;
         if (hp >= maxHp) {
-          return reject('use', `You're already at full health (${hp}/${maxHp}). ${item.name} kept.`);
+          // Panel message keeps the numbers; the Tale (if it logs this) gets the bank line.
+          return reject(
+            'use',
+            `You're already at full health (${hp}/${maxHp}). ${item.name} kept.`,
+            itemLine(voice, 'item.use.full', ITEM_USE_FULL_HP, item, state),
+          );
         }
         const nextHp = Math.min(maxHp, hp + traits.effect.amount);
         const gained = nextHp - hp;
@@ -336,15 +330,15 @@ export function resolveItemAction(
             ...withItems(nextItems),
             combat: { hp: nextHp, maxHp },
           },
-          narration: `${pick(
-            [
-              `You uncork the ${item.name.toLowerCase()} and drink. Warmth spreads through your chest`,
-              `The ${item.name.toLowerCase()} goes down bitter and bright; the ache in your limbs eases`,
-              `You knock back the ${item.name.toLowerCase()}. Heat blooms behind your ribs and your breath steadies`,
-            ],
-            seed,
-          )} — ${gained} HP restored (${nextHp}/${maxHp}).`,
+          narration: itemLine(voice, 'item.use.heal', [ITEM_USE_HEAL[nameKey(item)], ITEM_USE_HEAL.generic], item, state),
           playerLine: `Use ${item.name}`,
+          mechanicsLine: mechanicsLineFor({
+            hpChange: gained,
+            hp: nextHp,
+            hpMax: maxHp,
+            qtyLeft: { name: item.name, qty: left },
+          }),
+          narrFlags: voice.flags(),
         };
       }
       if (traits.slot) {
@@ -353,12 +347,12 @@ export function resolveItemAction(
           `${item.name} isn't used up — equip it instead.`,
         );
       }
-      return reject('use', `${item.name} has no use on its own right now.`);
+      return reject('use', `${item.name} has no use on its own.`, itemLine(voice, 'item.use.nothing', ITEM_USE_NOTHING, item, state));
     }
 
     case 'drop': {
       if (item.kind === 'quest') {
-        return reject('drop', `${item.name} matters to a quest — you hold on to it.`);
+        return reject('drop', itemLine(voice, 'item.questLocked', ITEM_QUEST_LOCKED, item, state));
       }
       const nextItems = items.filter((i) => i.id !== item.id);
       const what = item.qty > 1 ? `${item.qty}× ${item.name}` : item.name;
@@ -367,15 +361,10 @@ export function resolveItemAction(
         kind: 'drop',
         message: `Dropped ${what}.`,
         patch: withItems(nextItems),
-        narration: pick(
-          [
-            `You leave the ${item.name.toLowerCase()} behind${item.equipped ? ', unbuckling it first' : ''}. Your pack is a little lighter.`,
-            `You set the ${item.name.toLowerCase()} down and walk on without it.`,
-            `The ${item.name.toLowerCase()} stays where you drop it.`,
-          ],
-          seed,
-        ),
+        narration: itemLine(voice, 'item.drop', [ITEM_DROP[nameKey(item)], ITEM_DROP.generic], item, state),
         playerLine: `Drop ${what}`,
+        mechanicsLine: mechanicsLineFor({ itemsLost: [item.qty > 1 ? `${item.name} ×${item.qty}` : item.name] }),
+        narrFlags: voice.flags(),
       };
     }
     default:
@@ -383,12 +372,24 @@ export function resolveItemAction(
   }
 }
 
+export type BeatExtras = {
+  /** Compact mechanics line (formatMechanicsLine) shown under the prose. */
+  mechanicsLine?: string | null;
+  /** `narr.last.*` anti-repeat flags from the voice that picked the prose. */
+  narrFlags?: Record<string, string>;
+  /** What just happened (drives recentEvent tags next beat). null clears it. */
+  event?: RecentEvent | null;
+  /** Turn after this beat (default: state.session.turn). */
+  turnAfter?: number;
+};
+
 /** Append a narrator beat (player line + prose) to session story beats. */
 export function itemNarrationPatch(
   state: CampaignState,
   narration: string,
   playerLine: string | null,
   now: number = Date.now(),
+  extras: BeatExtras = {},
 ): CampaignStatePatch {
   const record: StoryBeatRecord = {
     id: `item-${state.session.turn}-${now}`,
@@ -397,11 +398,25 @@ export function itemNarrationPatch(
     stillCacheKey: null,
     placeLine: null,
     playerLine,
+    ...(extras.mechanicsLine ? { mechanicsLine: extras.mechanicsLine } : {}),
   };
   const beats = [...state.storyBeats, record].slice(-MAX_ITEM_STORY_BEATS);
   return {
     storyBeats: beats,
     storyMeta: { beatCount: state.storyMeta.beatCount + 1 },
+    flags: {
+      ...(extras.narrFlags ?? {}),
+      ...eventFlags(extras.event ?? null, extras.turnAfter ?? state.session.turn),
+    },
+  };
+}
+
+/** Merge a beat patch into an action patch without dropping either side's flags. */
+export function withBeatPatch(patch: CampaignStatePatch, beat: CampaignStatePatch): CampaignStatePatch {
+  return {
+    ...patch,
+    ...beat,
+    ...(patch.flags || beat.flags ? { flags: { ...(patch.flags ?? {}), ...(beat.flags ?? {}) } } : {}),
   };
 }
 
@@ -435,7 +450,13 @@ export function applyItemAction(
   if (!result.ok || !result.patch) return { campaign, result };
   let patch: CampaignStatePatch = result.patch;
   if (result.narration) {
-    patch = { ...patch, ...itemNarrationPatch(state, result.narration, result.playerLine, now) };
+    patch = withBeatPatch(
+      patch,
+      itemNarrationPatch(state, result.narration, result.playerLine, now, {
+        mechanicsLine: result.mechanicsLine ?? null,
+        narrFlags: result.narrFlags ?? {},
+      }),
+    );
   }
   if (patch.combat) {
     patch = { ...patch, combat: { ...state.combat, ...patch.combat } };

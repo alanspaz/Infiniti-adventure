@@ -13,6 +13,8 @@ import {
 } from './chronicle';
 import { deriveStats } from './derived';
 import type { CampaignFlagValue, CampaignSave, SessionState, StoryBeatRecord } from './save';
+import { FIRST_STEPS_COPY } from './narration/lineBanks';
+import { recordCtxFor } from './narration/voice';
 import type { CharacterSheet, Party } from './types';
 
 export type ItemSlot = 'weapon' | 'armor' | 'shield';
@@ -65,8 +67,8 @@ export const STARTER_QUEST: QuestRecord = {
   id: 'quest-first-steps',
   title: 'First steps',
   status: 'active',
-  summary: 'Find your footing in Embervale and learn what the town needs.',
-  progressNotes: 'Start at the Copper Kettle and ask around.',
+  summary: FIRST_STEPS_COPY.summary,
+  progressNotes: FIRST_STEPS_COPY.progressNotes,
 };
 
 export type CombatMode =
@@ -887,6 +889,7 @@ function advanceChronicle(
     explainedItemIds: explained,
     questXp: questXpFor,
     arrivalTrigger: (id) => QUEST_ARRIVAL_TRIGGERS[id] ?? null,
+    record: recordCtxFor(campaign.id, campaign.playstylePackId),
   });
   for (const p of derived) chronicle = applyChroniclePatch(chronicle, p, turn);
   return chronicle;

@@ -4,6 +4,18 @@
  * and drives stub prose at the CURRENT location (hearth, inn, street, etc.).
  */
 import type { CampaignFlagValue } from './save';
+import {
+  HEARTH_FEED,
+  HEARTH_WAIT,
+  lineMatches,
+  WAIT_ARCS,
+  WAIT_CONTEXT,
+  WAIT_FALLBACK,
+  composeLine,
+  type Bank,
+  type NodeId,
+} from './narration/lineBanks';
+import { DEFAULT_RECORD_CTX, placeRefFor, recordLineContext, Voice } from './narration/voice';
 
 export const HEARTH_FUEL_MAX = 4;
 
@@ -83,120 +95,63 @@ function locWaitFlag(locationId: string): string {
   return `${FLAG_LOC_WAIT_PREFIX}${locationId}`;
 }
 
-/** Prose after a wait tick at the hearth (fuel is the post-tick value). */
-export function hearthWaitProse(fuel: number, neglect: number, fedThisTick: boolean): string {
-  if (fedThisTick) {
-    return 'The hearth almost dies — then a stranger leans in with a scrap of wood. Flames catch again, thin but alive.';
-  }
-  if (fuel >= 4) {
-    return 'You wait by the hearth. The fire burns steady and warm; sparks climb the flue.';
-  }
-  if (fuel === 3) {
-    return 'You wait. The fire flickers — bright one breath, shy the next — still holding the cold at bay.';
-  }
-  if (fuel === 2) {
-    return 'You wait again. The fire is weaker now; the glow shrinks toward the coals and the room feels cooler.';
-  }
-  if (fuel === 1) {
-    return 'You wait. The hearth is almost out — a few orange eyes in the ash, smoke more than flame.';
-  }
-  // fuel === 0
-  if (neglect >= 2) {
-    return 'You wait in the dark of a dead hearth. Ash ticks. No one comes to feed it; the cold settles in for good.';
-  }
-  return 'You wait. The fire goes out. Only ash and the memory of warmth remain — unless someone feeds it soon.';
+/** Fallback voice when the caller has none (tests / tools): seeded by the tick. */
+function defaultAmbientVoice(seed: string): Voice {
+  return new Voice({ ctx: recordLineContext(DEFAULT_RECORD_CTX), seedBase: `ambient|${seed}` });
 }
 
-export function hearthFuelProse(fuel: number): string {
-  if (fuel >= HEARTH_FUEL_MAX) {
-    return 'You feed the hearth. Wood catches; heat rolls back into the common room as the fire stands tall again.';
-  }
-  if (fuel >= 3) {
-    return 'You poke and feed the fire. Flames climb; the chill loosens its grip.';
-  }
-  return 'You coax the coals with fresh fuel. Life returns to the hearth, if only a little.';
+/** Prose after a wait tick at the hearth (fuel is the post-tick value). Bank: HEARTH_WAIT. */
+export function hearthWaitProse(
+  fuel: number,
+  neglect: number,
+  fedThisTick: boolean,
+  voice: Voice = defaultAmbientVoice(`hearth|${fuel}|${neglect}|${fedThisTick}`),
+): string {
+  const key: keyof typeof HEARTH_WAIT = fedThisTick
+    ? 'fedByStranger'
+    : fuel >= 4
+      ? 'steady'
+      : fuel === 3
+        ? 'fuel3'
+        : fuel === 2
+          ? 'fuel2'
+          : fuel === 1
+            ? 'fuel1'
+            : neglect >= 2
+              ? 'dead'
+              : 'out';
+  return voice.say(`hearth.wait.${key}`, HEARTH_WAIT[key], {}) ?? 'You wait by the hearth.';
 }
 
-/** Progressing place-specific wait lines (index = loc wait step after tick, 1-based). */
-const PLACE_WAIT_ARCS: Record<string, string[]> = {
-  'place.copper-kettle': [
-    'You take a moment on the inn threshold. The copper kettle over the door ticks as it cools; hearth-smoke thins into the street air.',
-    'You wait at The Copper Kettle. A laugh rolls from the common room; boot-soles scrape the timber step; someone pours another round inside.',
-    'Time stretches at the inn door. A cart rattles past on Emberford stone; the kettle sign creaks; warm light spills, then dims, as the door swings.',
-    'You linger. The innkeeper calls a name you do not know; a cloak is hung; the threshold smells of bread, ale, and rain on copper.',
-  ],
-  'locale.emberford': [
-    'You take a moment on Emberford\'s street. Chimneys breathe; market shutters clap; a river breeze carries wet brick and fried dough.',
-    'You wait among the riverside noise. A hawker changes pitch; gulls argue over the quay; lantern-hooks sway for evening.',
-    'Time slides on the cobbles. A watchman nods past; wagon wheels grind; somewhere a smithy answers with three bright hammer-falls.',
-    'You linger in Emberford. The crowd thins a notch; puddles mirror the chimneys; the road toward the vale waits if you want it.',
-  ],
-  'locale.ashen-fields': [
-    'You take a moment in the Ashen Fields. Pale soil lifts on the wind; scarecrows lean; hedgerows tick with insects.',
-    'You wait under open sky. Clouds drag shadows across the furrows; a crow lands, then decides against you.',
-    'Time thins on the farm track. Dust settles on your boots; a distant mill turns; the road back to Emberford stays clear.',
-    'You linger. The scarecrow\'s coat flaps once; soil cools underfoot; the vale\'s watch-stones glint far off.',
-    'Wind runs low over the stubble. Somewhere out in the pale furrows, something small bolts for cover.',
-    'You hold still in the open. A farm dog barks two fields over, then thinks better of it.',
-    'The light shifts on the Ashen Fields; ash-dust ghosts along the track and settles in the ruts.',
-    'You wait. A scarecrow\'s sackcloth head turns in the wind — just the wind, you tell yourself.',
-  ],
-  'region.embervale': [
-    'You take a moment at the edge of Embervale. River light, mill towns, and old watch-stones hold still around you.',
-    'You wait on the vale road. Wind combs the hedgerows; a cart\'s bell fades; the land feels wider than any single errand.',
-    'Time edges forward. Smoke from distant chimneys drifts; a heron lifts from the water; paths fork without hurry.',
-    'You linger in the open vale. The world does not pause — it simply grants you a longer breath before the next mile.',
-  ],
-  'interior.kettle-cellar': [
-    'You take a moment in the inn cellar. Cool stone sweats; cider casks tick as they settle; the locked spice-chest keeps its secret.',
-    'You wait below. Drips count time in the dark corner; a rat decides you are boring; the stair up to the common room creaks once.',
-    'Time pools with the cider chill. Labels blur in low light; the air tastes of oak and old spice; nothing rushes you.',
-    'You linger among the casks. A cork sighs; dust motes drift; the chest\'s lock gleams — still shut, still waiting.',
-  ],
-  'place.brightanvil': [
-    'You take a moment in the smithy yard. Sparks leap; the anvil rings a clean note; heat rolls off the open forge.',
-    'You wait by Brightanvil. Quenching steam hisses; unfinished blades tick as they cool; a apprentice swaps tongs.',
-    'Time keeps forge-rhythm. Three hammer falls, a breath, then three again; horseshoes stack; the street noise feels far.',
-    'You linger in the yard. Coal glow paints the racks; the smith nods without stopping; iron smells like rain and work.',
-  ],
-  'interior.smith-forge': [
-    'You take a moment on the forge floor. Bellows breathe; racks of blades and shoes shimmer; heat presses your cheeks.',
-    'You wait in the forge. The hammer speaks; scale flakes from a billet; water in the quench tub shivers.',
-    'Time is measured in heats. Coals settle; tongs scrape; unfinished work waits in honest rows.',
-    'You linger by the bellows. Sweat and iron fill the air; the yard door frames a cooler slice of Emberford.',
-  ],
-  'place.mossglass': [
-    'You take a moment at Mossglass. Green bottles catch the light; drying herbs tick; a soft lamp paints the narrow shop.',
-    'You wait among the vials. A cork pops softly in back; labels in tidy script line the shelf; the street door chime stays still.',
-    'Time smells of leaf and glass. Dust floats in a green-lamp shaft; a ledger page turns somewhere out of sight.',
-    'You linger in the alchemist\'s front. Herbs sway on their strings; bottles wink; the counter inside still waits if you step closer.',
-  ],
-  'interior.alchemist-counter': [
-    'You take a moment at the shop counter. Labeled vials stand in careful ranks; the ledger\'s ink is still damp on the last line.',
-    'You wait by the polished wood. A pestle taps once in back; green-glass lamps hum; prices stay honest and exact.',
-    'Time drips like tincture. Seals glint; a bitter herb note rises; the street door feels a world away.',
-    'You linger at the counter. The alchemist\'s tools rest mid-task; nothing is rushed; every bottle has a name.',
-  ],
-};
-
-const GENERIC_WAIT_LINES = [
-  'You wait. Distant sound and a shift of light prove the place is still moving around your stillness.',
-  'You pass the moment. Footsteps, weather, or quiet rumor rearrange at the margins while you hold still.',
-  'You linger. The world edges forward a notch — enough to show the wait was not empty.',
-  'Time slides. Something small changes here: a shadow, a creak, a breath of air from an exit you already know.',
-];
-
-function pickPlaceArc(locationId: string | null): string[] | null {
-  if (!locationId) return null;
-  if (PLACE_WAIT_ARCS[locationId]) return PLACE_WAIT_ARCS[locationId]!;
-  return null;
+/** Feeding the fire. Bank: HEARTH_FEED (keeps /feed|hearth|fire|coals/). */
+export function hearthFuelProse(fuel: number, voice: Voice = defaultAmbientVoice(`feed|${fuel}`)): string {
+  const key: keyof typeof HEARTH_FEED = fuel >= HEARTH_FUEL_MAX ? 'full' : fuel >= 3 ? 'mid' : 'low';
+  return voice.say(`hearth.feed.${key}`, HEARTH_FEED[key], {}) ?? 'You feed the fire.';
 }
 
-function pickProgressingLine(lines: string[], step: number): string {
-  if (lines.length === 0) return GENERIC_WAIT_LINES[0]!;
-  // Progress through the arc, then gently cycle without immediate repeat.
-  const idx = Math.max(0, step - 1) % lines.length;
-  return lines[idx]!;
+/**
+ * Place wait: the ordered WAIT_ARCS line for this step (1-based, cycles), so the
+ * arc progresses and never repeats back to back. Unknown places use WAIT_FALLBACK.
+ */
+function placeWaitProse(locationId: string | null, step: number, voice: Voice): { prose: string; arc: boolean } {
+  const values = { place: placeRefFor(locationId) };
+  const arcBank: Bank | undefined = locationId ? WAIT_ARCS[locationId as Exclude<NodeId, 'interior.kettle-common'>] : undefined;
+  let prose: string | null = null;
+  if (arcBank && arcBank.length) {
+    const eligible = arcBank.filter((l) => lineMatches(l, voice.ctx));
+    const pool = eligible.length ? eligible : arcBank;
+    const line = pool[Math.max(0, step - 1) % pool.length]!;
+    prose = composeLine(line, voice.verbosity, { ...voice.baseValues, ...values });
+  }
+  const arc = prose !== null;
+  if (!prose) prose = voice.say('wait.fallback', WAIT_FALLBACK, values) ?? 'You wait a while.';
+  // Optional context prefix (hurt, …): only lines whose tags match right now.
+  const ctxLines = WAIT_CONTEXT.filter((l) => l.when && Object.keys(l.when).length > 0 && lineMatches(l, voice.ctx));
+  if (ctxLines.length) {
+    const c = voice.say('wait.context', ctxLines, values, { verbosity: 'short' });
+    if (c) prose = `${c} ${prose}`;
+  }
+  return { prose, arc };
 }
 
 /**
@@ -207,6 +162,8 @@ export function tickWorldAmbient(input: {
   flags?: Record<string, CampaignFlagValue>;
   locationId?: string | null;
   playerAction?: string;
+  /** NARR-04: the beat's voice (seeded, anti-repeat). Optional for tools/tests. */
+  voice?: Voice;
 }): WorldTickResult {
   const flags = input.flags ?? {};
   const locationId = input.locationId ?? null;
@@ -233,6 +190,7 @@ export function tickWorldAmbient(input: {
   };
 
   if (!action) return empty;
+  const voice = input.voice ?? defaultAmbientVoice(`${locationId ?? ''}|${lastWaitTick}|${fuel}|${neglect}`);
 
   // Fuel / stoke takes priority over wait when both match.
   if (isFuelAction(action) && hearth) {
@@ -248,7 +206,7 @@ export function tickWorldAmbient(input: {
         isFuel: true,
         hearthFuel: nextFuel,
         lastWaitTick,
-        prose: hearthFuelProse(nextFuel),
+        prose: hearthFuelProse(nextFuel, voice),
       },
       flagPatch: patch,
     };
@@ -295,7 +253,7 @@ export function tickWorldAmbient(input: {
         isFuel: false,
         hearthFuel: nextFuel,
         lastWaitTick: nextTick,
-        prose: hearthWaitProse(nextFuel, nextNeglect, fedThisTick),
+        prose: hearthWaitProse(nextFuel, nextNeglect, fedThisTick, voice),
       },
       flagPatch: patch,
     };
@@ -304,10 +262,7 @@ export function tickWorldAmbient(input: {
   // Non-hearth wait: advance global + per-location step; place-specific arcs first.
   const locKey = locationId ? locWaitFlag(locationId) : null;
   const locStep = locKey ? numFlag(flags, locKey, 0) + 1 : nextTick;
-  const arc = pickPlaceArc(locationId);
-  const prose = arc
-    ? pickProgressingLine(arc, locStep)
-    : pickProgressingLine(GENERIC_WAIT_LINES, nextTick);
+  const { prose, arc } = placeWaitProse(locationId, locStep, voice);
 
   const patch: Record<string, CampaignFlagValue> = {
     [FLAG_LAST_WAIT_TICK]: nextTick,

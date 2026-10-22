@@ -1,5 +1,40 @@
-import { placeRef } from './map';
+import { placeRef } from './mapGraph';
 import { tryLoadPlaystylePack } from './pack';
+import {
+  ARRIVAL,
+  CONTINUE,
+  CUSTOM,
+  HEARTH_STATE,
+  LOCATION_DETAILS,
+  LOOK,
+  LOOK_FALLBACK,
+  OPENING,
+  QUEST_FIRST_STEPS,
+  QUEST_FIRST_STEPS_MORE,
+  TRAVEL_AT_BOUNDARY,
+  TRAVEL_REFUSED,
+  WHERE_AM_I,
+  WHERE_AM_I_COMBAT,
+  WHERE_AM_I_FALLBACK,
+  type NodeId,
+  type TokenValues,
+} from './narration/lineBanks';
+import {
+  companionsPhrase,
+  foeArticled,
+  foeTokens,
+  packKeyFor,
+  placeRefFor,
+  Voice,
+  type VoiceInit,
+} from './narration/voice';
+import { isCleanProse } from './narration/lint';
+import {
+  buildNarratorSystemPrompt,
+  buildNarratorUserMessage,
+  type NarratorPromptFacts,
+  type PromptBeat,
+} from './narration/remotePrompt';
 
 /** Matches settings `ProviderKind` without importing React settings. */
 export type NarratorProviderKind = 'stub' | 'remote' | 'on-device';
@@ -80,10 +115,23 @@ export type NarratorSceneRequest = {
    * arrived → narrate the NEW place; refused → honest stub, no move.
    */
   travelOutcome?:
-    | { kind: 'arrived'; place: NarratorLocationHint }
+    | { kind: 'arrived'; place: NarratorLocationHint; toNodeId?: string }
     | { kind: 'refused'; attempted?: string }
     | { kind: 'at-boundary'; place: NarratorLocationHint }
     | null;
+  /**
+   * NARR-04: seeded voice (context + seed + last line ids) built from campaign state.
+   * Omitted → a deterministic default from this request (no module-global state).
+   */
+  voice?: VoiceInit | null;
+  /** Extra {tokens} (player name, weapon …). place/companions are filled here. */
+  tokens?: TokenValues;
+  /** Scripted First steps beats folded into this beat's prose. */
+  questBeats?: { offer?: boolean; complete?: boolean; progressAtDoor?: boolean } | null;
+  /** Foe name when a fight is on (where-am-I answers from the fight). */
+  inCombatWith?: string | null;
+  /** Facts for the remote narrator's user message (system-prompt.md layout). */
+  promptFacts?: Partial<NarratorPromptFacts> | null;
 };
 
 export type NarratorSceneSource =
@@ -98,6 +146,10 @@ export type NarratorSceneResult = {
   /** True when no network was used. */
   offline: boolean;
   source: NarratorSceneSource;
+  /** NARR-04: `narr.last.*` anti-repeat flags to persist with the beat. */
+  narrFlags?: Record<string, string>;
+  /** True when a remote reply failed the prose guard and the stub line was used. */
+  guardFallback?: boolean;
 };
 
 export type NarratorProviderOptions = {
@@ -122,19 +174,8 @@ export interface NarratorProvider {
   narrateScene(request: NarratorSceneRequest): Promise<NarratorSceneResult>;
 }
 
-const CANNED_OPENING =
-  'The road ahead is quiet. You stand alone at the threshold of the adventure, free to choose your next step.';
-
-/** Generic fallbacks — no shell/debug voice. */
-const FALLBACK_CONTINUE =
-  'The moment thins. Paths, voices, and unfinished business wait on what you do next.';
-
-const FALLBACK_CUSTOM =
-  'What you chose settles into the world — doors, faces, and risks rearrange around it.';
-
 /** Guaranteed non-empty player-facing line (Tale must never stay silent). */
-export const STUB_SAFE_PROSE =
-  'The moment holds. The tale waits on what you do next.';
+export const STUB_SAFE_PROSE = 'You take a breath and look around you.';
 
 type StubActionFlavor =
   | 'look'
@@ -171,92 +212,11 @@ const ACTION_FLAVOR_RE: Array<{ flavor: StubActionFlavor; re: RegExp }> = [
   },
 ];
 
-/** Varied pack lines per flavor — stub must not feel like a tiny repeat pool. */
-const FLAVOR_POOLS: Record<StubActionFlavor, string[]> = {
-  look: [
-    'You take in the scene. Details sharpen — light, sound, and what might matter next.',
-    'Your gaze settles. Edges resolve: exits, faces, and the small things worth noticing.',
-    'You study the space. Something useful — or dangerous — comes into focus.',
-  ],
-  travel: [
-    'You set yourself toward a new footing. Thresholds, roads, and rooms answer by shifting under your feet.',
-    'You commit to the path. Distance closes; the map of the moment redraws around you.',
-    'Forward, then. Doorframes and trail markers lean toward wherever you are going.',
-  ],
-  talk: [
-    'Words land. Faces and silences rearrange; someone — or something — has heard you.',
-    'You speak into the hush. Attention turns; answers or new questions gather close.',
-    'Your voice shapes the beat. A reply, a glance, or a careful quiet answers back.',
-  ],
-  fight: [
-    'Steel and will meet the moment. The clash resolves into new openings and fresh risk.',
-    'You commit to the strike. The exchange ends with bloodless possibility and sharper stakes.',
-    'Combat focuses the room. Footing, guard, and openings rearrange after the blow.',
-  ],
-  search: [
-    'You dig for what is hidden. A clue, a trap, or empty air — the world gives something back.',
-    'Fingers and eyes hunt the margins. The search pays in detail, if not always treasure.',
-    'You comb the place. Dust, marks, and oddities answer whether fortune does or not.',
-  ],
-  rest: [
-    'You ease the pace. Breath returns; the next threat or kindness has a little more room.',
-    'You pause. Tension loosens a notch — enough to hear what the quiet was hiding.',
-    'A short rest settles in. Strength gathers for whatever stands on the other side of stillness.',
-  ],
-  take: [
-    'Your hands claim a change. Weight, warmth, or absence marks what you took into the tale.',
-    'You take what the moment offers. Inventory — and consequence — shifts with the grasp.',
-    'Possession changes hands. The world notes what you claimed and what you left behind.',
-  ],
-  general: [
-    'Your choice ripples outward. Doors, faces, and unfinished business lean toward what comes next.',
-    'The tale answers your intent. Threads tug; the scene leans into what you meant to do.',
-    'Action settles into place. The world rearranges around the choice you just made.',
-    'You press on. Possibility thickens — not a repeat of the last beat, but a fresh hinge.',
-  ],
-};
-
-/** Location / orientation questions — answer from Map-truth locationHint. */
+/** Location / orientation questions — answer from Map-truth locationId. */
 const LOCATION_QUESTION_RE =
   /\b(where\s+am\s+i|where\s+are\s+we|where\s+is\s+this|where\s+do\s+i\s+(stand|sit|find\s+myself)|what(?:'s|\s+is)\s+(?:my\s+)?location|what(?:'s|\s+is)\s+nearby|where\s+can\s+i\s+go|exits?\s+here)\b/i;
 
-/** Recent stub bodies — avoid identical replies for different inputs in a short window. */
-const RECENT_STUB_WINDOW = 8;
-const recentStubBodies: string[] = [];
-
-function hashSeed(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i += 1) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-function rememberStubBody(body: string): void {
-  recentStubBodies.push(body);
-  while (recentStubBodies.length > RECENT_STUB_WINDOW) {
-    recentStubBodies.shift();
-  }
-}
-
-function pickVariedLine(pool: string[], seedKey: string): string {
-  if (pool.length === 0) return STUB_SAFE_PROSE;
-  const start = hashSeed(seedKey) % pool.length;
-  for (let i = 0; i < pool.length; i += 1) {
-    const candidate = pool[(start + i) % pool.length]!;
-    if (!recentStubBodies.includes(candidate)) {
-      rememberStubBody(candidate);
-      return candidate;
-    }
-  }
-  // All recent — still rotate off the seed so different inputs diverge.
-  const fallback = pool[start]!;
-  rememberStubBody(fallback);
-  return fallback;
-}
-
-function detectActionFlavor(action: string | undefined): StubActionFlavor {
+export function detectActionFlavor(action: string | undefined): StubActionFlavor {
   const text = (action ?? '').trim();
   if (!text) return 'general';
   for (const row of ACTION_FLAVOR_RE) {
@@ -265,106 +225,19 @@ function detectActionFlavor(action: string | undefined): StubActionFlavor {
   return 'general';
 }
 
-function isLocationQuestion(action: string | undefined): boolean {
+export function isLocationQuestion(action: string | undefined): boolean {
   const text = (action ?? '').trim();
   if (!text) return false;
   return LOCATION_QUESTION_RE.test(text);
 }
 
-/** QA-01: endings rotated after a custom beat (empty = let the beat stand alone). */
-const FILLER_ENDINGS = [
-  '',
-  'The moment settles, and the next choice is yours.',
-  'Nothing rushes you; the scene waits on your next move.',
-  'Small things shift in answer — enough to notice, not enough to be sure.',
-  '',
-];
-
-function pickFillerEnding(packTail: string, seedKey: string): string {
-  const pool = [packTail, ...FILLER_ENDINGS];
-  return pool[hashSeed(`tail|${seedKey}`) % pool.length]!;
-}
-
-/** Build Map-truth orientation prose (same facts as Map panel). */
-function proseForLocationHint(hint: NarratorLocationHint | null | undefined): string {
-  if (!hint?.name?.trim()) {
-    return 'You are somewhere the map has not named yet. Look again once the trail marks settle.';
-  }
-  const name = hint.name.trim();
-  const desc = (hint.description ?? '').replace(/\s+/g, ' ').trim();
-  const nearby = hint.nearby ?? [];
-  const nearbyBit =
-    nearby.length === 0
-      ? 'Nothing obvious is nearby from here.'
-      : `Nearby: ${nearby
-          .map((e) => {
-            const dest = e.toName?.trim() || 'somewhere';
-            const label = e.label?.trim();
-            return label ? `${dest} (${label})` : dest;
-          })
-          .join('; ')}.`;
-  if (desc) {
-    return `You are at ${placeRef(name)}. ${desc} ${nearbyBit}`;
-  }
-  return `You are at ${placeRef(name)}. ${nearbyBit}`;
-}
-
-/** TRAVEL-01: arrival at a nearby exit destination. */
-function proseForArrival(place: NarratorLocationHint): string {
-  const name = place.name?.trim() || 'a new place';
-  const desc = (place.description ?? '').replace(/\s+/g, ' ').trim();
-  const nearby = place.nearby ?? [];
-  const nearbyBit =
-    nearby.length === 0
-      ? 'Nothing obvious is nearby from here.'
-      : `Nearby: ${nearby
-          .map((e) => {
-            const dest = e.toName?.trim() || 'somewhere';
-            const label = e.label?.trim();
-            return label ? `${dest} (${label})` : dest;
-          })
-          .join('; ')}.`;
-  if (desc) {
-    return `You arrive at ${placeRef(name)}. ${desc} ${nearbyBit}`;
-  }
-  return `You arrive at ${placeRef(name)}. ${nearbyBit}`;
-}
-
-/** TRAVEL-01: go/walk/head to a place that is not a nearby exit. */
-function proseForTravelRefuse(attempted?: string): string {
-  void attempted;
-  return (
-    'You cannot reach that from here. Check the Map for nearby places, ' +
-    'or name a nearby exit in the Tale.'
-  );
-}
-
-/** TRAVEL-01: leave past the top of the Region → … chain. */
-function proseForAtBoundary(place: NarratorLocationHint): string {
-  const name = place.name?.trim() || 'the open wilds';
-  return (
-    `You are already at ${name} — the open edge of the map. ` +
-    'There is nowhere higher to leave toward from here. Name a nearby place if you want to travel.'
-  );
-}
-
-/** Action-aware stub body — never echoes raw playerAction into prose. */
-function flavorBodyForAction(
-  action: string | undefined,
-  packFallback: string | null,
-): string {
-  const flavor = detectActionFlavor(action);
-  const pool = FLAVOR_POOLS[flavor];
-  const flavored = pickVariedLine(pool, `${flavor}|${(action ?? '').trim()}`);
-  if (packFallback?.trim()) {
-    // Lead with action flavor, then pack color — still no raw echo.
-    return `${flavored} ${packFallback.trim()}`;
-  }
-  return flavored;
-}
-
+/** Collapse runs of spaces but keep paragraph breaks ("\n\n"). */
 function ensureProse(prose: string): string {
-  const t = prose.replace(/\s+/g, ' ').trim();
+  const t = prose
+    .split(/\n{2,}/)
+    .map((p) => p.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n\n');
   return t.length > 0 ? t : STUB_SAFE_PROSE;
 }
 
@@ -396,237 +269,143 @@ function lastUserContent(messages: ChatMessage[]): string {
   return '';
 }
 
-/** NARR-03: lush adds concrete Map/ambient facts — never fluff padding. */
-function collectLushFacts(request: NarratorSceneRequest | undefined): string[] {
-  if (!request) return [];
-  const facts: string[] = [];
-  const place =
-    request.travelOutcome?.kind === 'arrived'
-      ? request.travelOutcome.place
-      : request.travelOutcome?.kind === 'at-boundary'
-        ? request.travelOutcome.place
-        : request.locationHint ?? null;
-  if (place?.name?.trim()) {
-    const name = place.name.trim();
-    const desc = (place.description ?? '').replace(/\s+/g, ' ').trim();
-    if (desc) facts.push(`Here at ${name}: ${desc}`);
-    else facts.push(`You remain at ${name}.`);
-    const nearby = place.nearby ?? [];
-    if (nearby.length > 0) {
-      facts.push(
-        `Exits and nearby: ${nearby
-          .slice(0, 4)
-          .map((e) => {
-            const dest = e.toName?.trim() || 'somewhere';
-            const label = e.label?.trim();
-            return label ? `${dest} (${label})` : dest;
-          })
-          .join('; ')}.`,
-      );
-    } else {
-      facts.push('No obvious exits from here.');
-    }
-    const n = name.toLowerCase();
-    if (/common|kettle|inn/.test(n)) {
-      facts.push(
-        'Patrons murmur at the benches; the bar keeps its quiet inventory of mugs.',
-      );
-    } else if (/emberford|street|town|gate/.test(n)) {
-      facts.push(
-        'Townsfolk pass with baskets and gossip; chimney smoke threads the lane.',
-      );
-    } else if (/forge|smith|brightanvil/.test(n)) {
-      facts.push(
-        'An apprentice stacks cooled shoes; sparks still tick from the last strike.',
-      );
-    } else if (/mossglass|alchemist|counter|shop/.test(n)) {
-      facts.push(
-        'Labeled vials wink on the shelf; drying herbs tick against their strings.',
-      );
-    } else if (/field|vale|ashen/.test(n)) {
-      facts.push('Scarecrows lean in the wind; pale soil lifts, then settles again.');
-    } else if (/cellar/.test(n)) {
-      facts.push('Casks sweat in the cool dark; the spice-chest lock holds fast.');
-    }
-  }
+/** Deterministic default voice when the caller did not build one from state. */
+function defaultVoiceInit(request: NarratorSceneRequest): VoiceInit {
   const fuel = request.worldTick?.hearthFuel;
-  if (fuel != null) {
-    if (fuel <= 0) facts.push('The hearth is ash and cold memory.');
-    else if (fuel === 1) {
-      facts.push('The hearth is nearly out — thin coals, more smoke than flame.');
-    } else if (fuel <= 2) {
-      facts.push('The hearth burns low, glow pulled tight to the coals.');
-    } else {
-      facts.push('The hearth still throws steady warmth into the room.');
-    }
-  }
-  return facts;
+  const atKettle =
+    request.locationId === 'interior.kettle-common' || request.locationId === 'place.copper-kettle';
+  return {
+    ctx: {
+      pack: packKeyFor(request.playstylePackId) ?? 'hearthlight',
+      hpLow: false,
+      companions: (request.partyNames ?? []).filter(Boolean).length > 0,
+      recentEvent: null,
+      timeOfDay: null,
+      hearth: atKettle && fuel != null ? (fuel >= 3 ? 'bright' : fuel >= 1 ? 'low' : 'out') : null,
+      activeQuestIds: [],
+      doneQuestIds: [],
+      has: { loot: false, goldLost: false, goldGained: false },
+    },
+    seedBase: [
+      'stub',
+      request.playstylePackId ?? '',
+      request.locationId ?? '',
+      request.turn ?? 0,
+      (request.playerAction ?? '').trim().toLowerCase(),
+    ].join('|'),
+  };
 }
 
-function applyVerbosity(
-  prose: string,
-  verbosity: NarratorVerbosity = 'standard',
-  request?: NarratorSceneRequest,
-): string {
-  const trimmed = prose.trim();
-  if (verbosity === 'short') {
-    const sentence = trimmed.split(/(?<=[.!?])\s+/)[0] ?? trimmed;
-    return sentence.length > 160 ? `${sentence.slice(0, 157)}…` : sentence;
+/** One lush sensory detail: a LOCATION_DETAILS pick, plus the hearth at the common room. */
+function lushDetail(voice: Voice, locationId: string | null | undefined): string | null {
+  if (!locationId) return null;
+  const bits: string[] = [];
+  const d = voice.sayString(`detail.${locationId}`, LOCATION_DETAILS[locationId as NodeId]);
+  if (d) bits.push(d);
+  if (locationId === 'interior.kettle-common' && voice.ctx.hearth) {
+    const h = voice.sayString(`hearth.${voice.ctx.hearth}`, HEARTH_STATE[voice.ctx.hearth]);
+    if (h) bits.push(h);
   }
-  if (verbosity === 'lush') {
-    const lower = trimmed.toLowerCase();
-    const fresh: string[] = [];
-    for (const fact of collectLushFacts(request)) {
-      // Skip facts whose distinctive core already appears in the base line.
-      const core = fact
-        .replace(/^Here at [^:]+:\s*/i, '')
-        .replace(/^You remain at\s+/i, '')
-        .replace(/^Exits and nearby:\s*/i, '')
-        .slice(0, 36)
-        .toLowerCase();
-      if (core && lower.includes(core)) continue;
-      if (/soft detail gathers|quiet possibility|texture, light/i.test(fact)) {
-        continue;
-      }
-      fresh.push(fact);
-    }
-    if (fresh.length === 0) return trimmed;
-    return `${trimmed} ${fresh.join(' ')}`;
-  }
-  return trimmed;
+  return bits.length ? bits.join(' ') : null;
 }
 
-function partyClause(
-  partyNames: string[] | undefined,
-  pack: ReturnType<typeof tryLoadPlaystylePack>,
-  beat: NarratorBeat,
-): string | null {
-  const stubs = pack?.contentStubs;
-  const names = (partyNames ?? []).map((n) => n.trim()).filter(Boolean);
-
-  if (names.length === 0) {
-    // Opening pack beats already imply solitude — skip aloneClause to avoid doubling.
-    if (beat === 'opening' && stubs?.openingBeat) {
-      return null;
-    }
-    // QA-01: don't tack "you walk alone" onto every custom beat.
-    if (beat === 'custom') return null;
-    return stubs?.aloneClause?.trim() || null;
-  }
-  if (names.length === 1) {
-    const template =
-      stubs?.partyReadyOne?.trim() || '{name} stands ready beside you.';
-    return template.replace(/\{name\}/g, names[0]!);
-  }
-  const template =
-    stubs?.partyReadyMany?.trim() || 'With you: {names}.';
-  return template.replace(/\{names\}/g, names.join(', '));
-}
-
-function resolveStubProse(request: NarratorSceneRequest): {
+export type StubProse = {
   prose: string;
   source: NarratorSceneSource;
-} {
+  narrFlags: Record<string, string>;
+  /** Which beat label this was (remote prompt BEAT line). */
+  promptBeat: PromptBeat;
+};
+
+/** NARR-04 stub: every line comes from lineBanks via the seeded voice. */
+export function resolveStubProse(request: NarratorSceneRequest): StubProse {
   const beat = request.beat ?? 'opening';
-  const pack = tryLoadPlaystylePack(request.playstylePackId);
-  const stubs = pack?.contentStubs;
-  let body: string;
-  let source: NarratorSceneSource = 'canned';
+  const voice = new Voice(
+    request.voice
+      ? { ...request.voice, verbosity: request.verbosity ?? request.voice.verbosity ?? 'standard' }
+      : { ...defaultVoiceInit(request), verbosity: request.verbosity ?? 'standard' },
+  );
+  const here = request.locationId ?? null;
+  const companionNames = (request.partyNames ?? []).map((n) => n.trim()).filter(Boolean);
+  const base: TokenValues = {
+    place: here ? placeRefFor(here) : request.locationHint?.name ? placeRef(request.locationHint.name) : 'this place',
+    ...(companionNames.length ? { companions: companionsPhrase(companionNames) } : {}),
+    ...(request.tokens ?? {}),
+  };
+  const paragraphs: string[] = [];
+  // 'pack-template' when the request names a real pack (pack-tagged lines are eligible); 'canned' otherwise.
+  let source: NarratorSceneSource = tryLoadPlaystylePack(request.playstylePackId) ? 'pack-template' : 'canned';
+  let promptBeat: PromptBeat = beat === 'opening' ? 'opening' : beat === 'continue' ? 'continue' : 'custom';
 
-  if (beat === 'opening' && stubs?.openingBeat) {
-    body = stubs.openingBeat;
-    source = 'pack-template';
+  // Unknown node (no id): the map's own description stands in as the lush detail, if it is clean.
+  const hintDetail = (() => {
+    const d = request.locationHint?.description?.trim();
+    return d && !/\d/.test(d) ? d : null;
+  })();
+  const say = (path: string, banks: Parameters<Voice['say']>[1], values: TokenValues = base, detailAt?: string | null) =>
+    voice.say(path, banks, values, {
+      detail: detailAt === undefined ? null : detailAt ? lushDetail(voice, detailAt) : hintDetail,
+    });
+
+  if (beat === 'opening') {
+    paragraphs.push(say('opening', OPENING, base, here) ?? STUB_SAFE_PROSE);
+    if (request.questBeats?.offer) {
+      const offer = say('quest.firstSteps.offer', QUEST_FIRST_STEPS.offer);
+      if (offer) paragraphs.push(offer);
+    }
   } else if (beat === 'continue') {
-    // NARR-02c: continue must not spam one identical line — vary with place facts.
-    const continuePool: string[] = [];
-    if (stubs?.continueBeat?.trim()) continuePool.push(stubs.continueBeat.trim());
-    continuePool.push(FALLBACK_CONTINUE);
-    const hint = request.locationHint;
-    if (hint?.name?.trim()) {
-      const name = hint.name.trim();
-      const desc = (hint.description ?? '').replace(/\s+/g, ' ').trim();
-      continuePool.push(
-        desc
-          ? `The moment holds at ${name}. ${desc}`
-          : `The moment holds at ${name}.`,
-      );
-      const nearby = hint.nearby ?? [];
-      if (nearby.length > 0) {
-        continuePool.push(
-          `At ${name}, paths still wait: ${nearby
-            .slice(0, 3)
-            .map((e) => e.toName?.trim() || 'somewhere')
-            .join('; ')}.`,
-        );
-      }
-    }
-    if (request.worldTick?.hearthFuel != null) {
-      const f = request.worldTick.hearthFuel;
-      continuePool.push(
-        f <= 0
-          ? 'Ash ticks in a dead hearth. The room waits on what you do next.'
-          : 'Firelight leans on the benches. The tale waits on your next kindness — or stand.',
-      );
-    }
-    body = pickVariedLine(
-      continuePool,
-      `continue|${request.locationId ?? ''}|${request.turn ?? 0}`,
-    );
-    source = stubs?.continueBeat ? 'pack-template' : 'canned';
-  } else if (beat === 'custom') {
-    // Never echo raw playerAction into player-facing prose.
-    // Travel arrival/refuse → Map-truth. World-tick → ambient. Location Q → Map-truth.
-    if (request.travelOutcome?.kind === 'arrived') {
-      body = proseForArrival(request.travelOutcome.place);
-      source = 'canned';
-    } else if (request.travelOutcome?.kind === 'at-boundary') {
-      body = proseForAtBoundary(request.travelOutcome.place);
-      source = 'canned';
-    } else if (request.travelOutcome?.kind === 'refused') {
-      body = proseForTravelRefuse(request.travelOutcome.attempted);
-      source = 'canned';
-    } else if (request.worldTick?.prose?.trim()) {
-      body = request.worldTick.prose.trim();
-      source = 'canned';
-    } else if (isLocationQuestion(request.playerAction)) {
-      body = proseForLocationHint(request.locationHint);
-      source = 'canned';
-    } else {
-      const packTail = stubs?.customBeatFallback?.trim() || null;
-      const flavored = flavorBodyForAction(request.playerAction, null);
-      // QA-01: vary the filler ending (pack line is one of several; sometimes none).
-      const packFallback = packTail
-        ? pickFillerEnding(packTail, `${request.playerAction ?? ''}|${request.turn ?? 0}|${request.locationId ?? ''}`)
-        : null;
-      if (packFallback) {
-        const prefix = stubs?.customBeatPrefix?.trim();
-        body = prefix
-          ? `${prefix} ${flavored}${packFallback ? ` ${packFallback}` : ''}`
-          : `${flavored}${packFallback ? ` ${packFallback}` : ''}`;
-        source = 'pack-template';
-      } else {
-        body = flavored || FALLBACK_CUSTOM;
-        source = 'canned';
-      }
-    }
-  } else if (beat === 'opening') {
-    body = CANNED_OPENING;
+    paragraphs.push(say('continue', CONTINUE, base, here) ?? STUB_SAFE_PROSE);
   } else {
-    body = FALLBACK_CUSTOM;
-  }
-
-  // Player-facing stub prose only — keep session logSummary / turn / raw
-  // location ids out of the narrative (they remain available to remote prompts).
-  const bits: string[] = [body];
-  const party = partyClause(request.partyNames, pack, beat);
-  if (party) bits.push(party);
-  if (request.checkHint?.trim()) {
-    bits.push(request.checkHint.trim());
+    const travel = request.travelOutcome;
+    if (travel?.kind === 'arrived') {
+      promptBeat = 'arrival';
+      const toId = travel.toNodeId ?? null;
+      const values: TokenValues = { ...base, place: placeRefFor(toId, placeRef(travel.place.name)) };
+      const banks = [toId ? ARRIVAL[toId as NodeId] : undefined, WHERE_AM_I_FALLBACK];
+      const parts: string[] = [say(`arrival.${toId ?? 'any'}`, banks, values, toId) ?? STUB_SAFE_PROSE];
+      if (request.questBeats?.progressAtDoor) {
+        const p = say('quest.firstSteps.progress', QUEST_FIRST_STEPS_MORE.progress, values);
+        if (p) parts.push(p);
+      }
+      paragraphs.push(parts.join(' '));
+      if (request.questBeats?.complete) {
+        const c = say('quest.firstSteps.complete', QUEST_FIRST_STEPS.complete, values);
+        if (c) paragraphs.push(c);
+      }
+    } else if (travel?.kind === 'at-boundary') {
+      paragraphs.push(say('travel.boundary', TRAVEL_AT_BOUNDARY) ?? STUB_SAFE_PROSE);
+    } else if (travel?.kind === 'refused') {
+      paragraphs.push(say('travel.refused', TRAVEL_REFUSED) ?? STUB_SAFE_PROSE);
+    } else if (request.worldTick?.prose?.trim()) {
+      promptBeat = 'wait';
+      paragraphs.push(request.worldTick.prose.trim());
+    } else if (isLocationQuestion(request.playerAction)) {
+      promptBeat = 'where';
+      if (request.inCombatWith) {
+        paragraphs.push(
+          say('where.combat', WHERE_AM_I_COMBAT, { ...base, ...foeTokens(request.inCombatWith) }) ?? STUB_SAFE_PROSE,
+        );
+      } else {
+        const banks = [here ? WHERE_AM_I[here as NodeId] : undefined, WHERE_AM_I_FALLBACK];
+        paragraphs.push(say(`where.${here ?? 'any'}`, banks, base, here) ?? STUB_SAFE_PROSE);
+      }
+    } else {
+      const flavor = detectActionFlavor(request.playerAction);
+      if (flavor === 'look') {
+        promptBeat = 'look';
+        const banks = [here ? LOOK[here as NodeId] : undefined, LOOK_FALLBACK];
+        paragraphs.push(say(`look.${here ?? 'any'}`, banks, base, here) ?? STUB_SAFE_PROSE);
+      } else {
+        paragraphs.push(say(`custom.${flavor}`, CUSTOM[flavor], base, here) ?? STUB_SAFE_PROSE);
+      }
+    }
   }
 
   return {
-    prose: ensureProse(applyVerbosity(bits.join(' '), request.verbosity, request)),
+    prose: ensureProse(paragraphs.join('\n\n')),
     source,
+    narrFlags: voice.flags(),
+    promptBeat,
   };
 }
 
@@ -654,12 +433,13 @@ export class StubNarratorProvider implements NarratorProvider {
   async narrateScene(
     request: NarratorSceneRequest,
   ): Promise<NarratorSceneResult> {
-    const { prose, source } = resolveStubProse(request);
+    const { prose, source, narrFlags } = resolveStubProse(request);
     return {
       prose,
       providerKind: 'stub',
       offline: true,
       source,
+      narrFlags,
     };
   }
 }
@@ -748,38 +528,68 @@ export class RemoteNarratorProvider implements NarratorProvider {
         'Narrator remote HTTP client is not implemented yet (provider configured but transport pending)',
       );
     }
-    const system =
-      'You are a concise fantasy adventure narrator. No NSFW. Empty party is valid; do not invent forced companions.';
-    const userParts = [
-      `Beat: ${request.beat ?? 'opening'}`,
-      request.playerAction?.trim()
-        ? `Player action: ${request.playerAction.trim()}`
-        : null,
-      request.locationId ? `Location: ${request.locationId}` : null,
-      request.partyNames && request.partyNames.length
-        ? `Party: ${request.partyNames.join(', ')}`
-        : 'Party: alone',
-      request.logSummary?.trim()
-        ? `Recently: ${request.logSummary.trim()}`
-        : null,
-      request.checkHint?.trim() ? request.checkHint.trim() : null,
-      `Verbosity: ${request.verbosity ?? 'standard'}`,
-    ].filter(Boolean);
+    // NARR-04: the stub line is computed first — it is the guard fallback and keeps
+    // the anti-repeat flags moving even when the remote reply is used.
+    const stub = resolveStubProse(request);
+    const pack = tryLoadPlaystylePack(request.playstylePackId);
     const completion = await this.httpChat({
       model: this.model,
       messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: userParts.join('\n') },
+        { role: 'system', content: buildNarratorSystemPrompt(pack) },
+        { role: 'user', content: buildNarratorUserMessage(promptFactsFor(request, stub.promptBeat)) },
       ],
     });
-    const prose = completion.choices[0]!.message.content.trim();
+    const raw = completion.choices[0]!.message.content.trim();
+    const allowNames = [
+      ...(request.partyNames ?? []),
+      ...(request.promptFacts?.playerName ? [request.promptFacts.playerName] : []),
+      ...(request.promptFacts?.peopleHere ?? []).map((p) => p.name),
+      ...(request.inCombatWith ? [request.inCombatWith] : []),
+      ...(request.locationHint?.name ? [request.locationHint.name] : []),
+    ];
+    if (!isCleanProse(raw, { allowNames, verbosity: request.verbosity ?? 'standard' })) {
+      return {
+        prose: stub.prose,
+        providerKind: 'remote',
+        offline: false,
+        source: stub.source,
+        narrFlags: stub.narrFlags,
+        guardFallback: true,
+      };
+    }
     return {
-      prose: ensureProse(applyVerbosity(prose, request.verbosity, request)),
+      prose: ensureProse(raw),
       providerKind: 'remote',
       offline: false,
       source: 'remote',
+      narrFlags: stub.narrFlags,
     };
   }
+}
+
+/** Fill the system-prompt.md user-message facts from the request (+ caller facts). */
+export function promptFactsFor(request: NarratorSceneRequest, beat: PromptBeat): NarratorPromptFacts {
+  const f = request.promptFacts ?? {};
+  const travel = request.travelOutcome;
+  const placeHint = travel?.kind === 'arrived' ? travel.place : request.locationHint ?? null;
+  const locationId = travel?.kind === 'arrived' ? travel.toNodeId ?? null : request.locationId ?? null;
+  const fuel = request.worldTick?.hearthFuel;
+  return {
+    beat: (f.beat as PromptBeat | undefined) ?? beat,
+    verbosity: request.verbosity ?? 'standard',
+    locationId,
+    placeName: placeHint?.name ?? null,
+    placeDetail: placeHint?.description ?? null,
+    waysOn: (placeHint?.nearby ?? []).map((e) => (e.label ? `${e.label} (${e.toName})` : e.toName)),
+    hearth:
+      locationId === 'interior.kettle-common' && fuel != null
+        ? fuel >= 3 ? 'bright' : fuel >= 1 ? 'low' : 'out'
+        : null,
+    companions: request.partyNames ?? [],
+    inCombatWith: request.inCombatWith ? foeArticled(request.inCombatWith) : null,
+    playerDid: f.playerDid ?? (request.playerAction ? detectActionFlavor(request.playerAction) : beat),
+    ...f,
+  };
 }
 
 /** Reserved on-device LLM slot for v1 — not available. */

@@ -34,8 +34,20 @@ import {
 import { withSession, type CampaignSave } from './save';
 import { tickWorldAmbient } from './ambient';
 import {
-  applyCampaignPatch,
+  campaignToState,
+  QUEST_ARRIVAL_TRIGGERS,
+  questXpFor,
 } from './campaignState';
+import { npcsAt } from './npcs';
+import {
+  createVoice,
+  eventFlags,
+  mechanicsLineFor,
+  voiceInitFrom,
+} from './narration/voice';
+import { FIRST_STEPS_JOURNAL } from './narration/lineBanks';
+import { applyChroniclePatch, normalizeChronicle } from './chronicle';
+import { recordLine, recordCtxFor } from './narration/voice';
 
 export type SuggestedCheck = {
   ability: AbilityKey;
@@ -89,7 +101,13 @@ export type SceneBeatResult = {
   still: StillResult | null;
   /** Truncated action / beat summary appended to log. */
   logLine: string;
+  /** NARR-04: compact numbers line under the prose (quest complete +XP), or null. */
+  mechanicsLine: string | null;
 };
+
+export const FIRST_STEPS_QUEST_ID = 'quest-first-steps';
+/** Set once the "lead at the door" journal line has been written. */
+export const FLAG_FIRST_STEPS_DOOR_NOTE = 'narr.firstSteps.doorNoted';
 
 /** Keyword → ability (simple v1 heuristic). */
 const CHECK_PATTERNS: Array<{
@@ -535,16 +553,46 @@ export async function resolveSceneBeat(
     }
   }
 
+  // NARR-04: one seeded voice per beat (separate from the dice rng).
+  const state = campaignToState(input.campaign);
+  const voiceInit = voiceInitFrom(state, { verbosity });
+  const ambientVoice = createVoice(voiceInit);
+
   // NARR-02c: wait / fuel advances ambient scene clock at CURRENT location.
   const ambient = tickWorldAmbient({
     flags: input.campaign.flags,
     locationId,
     playerAction: action || undefined,
+    voice: ambientVoice,
   });
+
+  // Quest beats (First steps): offer at the opening, a nudge at the door, completion on arrival.
+  const activeQuests = state.quests.filter((q) => q.status === 'active');
+  const firstStepsActive = activeQuests.some((q) => q.id === FIRST_STEPS_QUEST_ID);
+  const completing = travel
+    ? activeQuests.find((q) => QUEST_ARRIVAL_TRIGGERS[q.id] === travel!.toNodeId) ?? null
+    : null;
+  const questBeats = {
+    offer: beat === 'opening' && state.storyBeats.length === 0 && firstStepsActive,
+    complete: completing?.id === FIRST_STEPS_QUEST_ID,
+    progressAtDoor: Boolean(travel && travel.toNodeId === 'place.copper-kettle' && firstStepsActive),
+  };
+  let mechanicsLine: string | null = null;
+  if (completing) {
+    const xp = state.progression.rewardedQuestIds.includes(completing.id) ? 0 : questXpFor(completing.id);
+    mechanicsLine = mechanicsLineFor({ quest: { status: 'complete', title: completing.title }, ...(xp > 0 ? { xp } : {}) });
+  }
+
+  const pc = state.party[0] ?? null;
+  const hp = state.combat.hp;
+  const maxHp = state.combat.maxHp;
+  const condition: 'hale' | 'hurt' | 'down' =
+    hp != null && hp <= 0 ? 'down' : hp != null && maxHp != null && maxHp > 0 && hp / maxHp <= 0.5 ? 'hurt' : 'hale';
+  const factsLoc = travel ? travel.toNodeId : locationId;
 
   const travelOutcome =
     travel && arrivalHint
-      ? ({ kind: 'arrived' as const, place: arrivalHint })
+      ? ({ kind: 'arrived' as const, place: arrivalHint, toNodeId: travel.toNodeId })
       : travelAtBoundary && locationHint
         ? ({ kind: 'at-boundary' as const, place: locationHint })
         : travelUnknown
@@ -564,6 +612,18 @@ export async function resolveSceneBeat(
     locationHint,
     worldTick: ambient.hint,
     travelOutcome,
+    voice: voiceInit,
+    tokens: { ...(pc ? { name: pc.name.split(/\s+/)[0] ?? pc.name } : {}) },
+    questBeats,
+    inCombatWith: state.combat.inCombat ? state.combat.foe?.name ?? null : null,
+    promptFacts: {
+      playerName: pc?.name ?? null,
+      peopleHere: npcsAt(factsLoc).map((n) => ({ name: n.name, role: n.role })),
+      condition,
+      activeQuest: activeQuests[0]?.title ?? null,
+      mechanicsApplied: mechanicsLine,
+      recentEvent: voiceInit.ctx.recentEvent,
+    },
   });
 
   const prose = narratorResult.prose;
@@ -596,13 +656,38 @@ export async function resolveSceneBeat(
 
   // QA-01 P0-1: the narrator never starts/ends fights (see applyCombatIntent).
 
-  if (Object.keys(ambient.flagPatch).length > 0) {
-    campaign = {
-      ...campaign,
-      flags: { ...campaign.flags, ...ambient.flagPatch },
-      updatedAt: new Date().toISOString(),
-    };
+  // NARR-04: anti-repeat ids + what just happened ride along with the ambient flags.
+  const event = travel ? 'justArrived' : ambient.hint.isWait ? 'justWaited' : null;
+  const flagPatch: Record<string, string | number | boolean> = {
+    ...ambient.flagPatch,
+    ...ambientVoice.flags(),
+    ...(narratorResult.narrFlags ?? {}),
+    ...eventFlags(event, nextTurn),
+  };
+  // The door nudge is also a journal lead, written once.
+  if (questBeats.progressAtDoor && !campaign.flags[FLAG_FIRST_STEPS_DOOR_NOTE] && campaign.world) {
+    const rc = recordCtxFor(campaign.id, campaign.playstylePackId);
+    const text = recordLine(FIRST_STEPS_JOURNAL.leadDoor, rc, 'leadDoor');
+    if (text) {
+      campaign = {
+        ...campaign,
+        world: {
+          ...campaign.world,
+          chronicle: applyChroniclePatch(
+            normalizeChronicle(campaign.world.chronicle),
+            { questBeat: { questId: FIRST_STEPS_QUEST_ID, kind: 'lead', text } },
+            nextTurn,
+          ),
+        },
+      };
+    }
+    flagPatch[FLAG_FIRST_STEPS_DOOR_NOTE] = true;
   }
+  campaign = {
+    ...campaign,
+    flags: { ...campaign.flags, ...flagPatch },
+    updatedAt: new Date().toISOString(),
+  };
 
   let where: WhereAmIResult | null = null;
   try {
@@ -633,6 +718,7 @@ export async function resolveSceneBeat(
     where,
     still,
     logLine,
+    mechanicsLine,
   };
 }
 

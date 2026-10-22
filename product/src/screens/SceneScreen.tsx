@@ -53,6 +53,8 @@ type StoryBeat = {
   still: StillResult | null;
   placeLine: string | null;
   playerLine: string | null;
+  /** NARR-04: compact numbers under the prose (never inside it). */
+  mechanicsLine: string | null;
 };
 
 const MAX_STORY_BEATS = 40;
@@ -84,7 +86,11 @@ function playerFacingProse(raw: string): string {
     .replace(/\s*\[[^\]]*DC[^\]]*\]/gi, '')
     .replace(/\s*\(You make your way:[^)]*\)\.?/gi, '')
     .replace(/\s*You intended:\s*[^\n.]+\.?/gi, '')
-    .replace(/\s{2,}/g, ' ')
+    // NARR-04: keep paragraph breaks (offer / completion paragraphs), collapse the rest.
+    .split(/\n\s*\n/)
+    .map((p) => p.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n\n')
     .trim();
   // NARR-01: never emit an empty narrator bubble after cleanup.
   return cleaned.length > 0 ? cleaned : STUB_SAFE_PROSE;
@@ -98,6 +104,7 @@ function recordsToBeats(records: StoryBeatRecord[]): StoryBeat[] {
     still: null,
     placeLine: r.placeLine ?? null,
     playerLine: r.playerLine ?? null,
+    mechanicsLine: r.mechanicsLine ?? null,
   }));
 }
 
@@ -113,6 +120,7 @@ function hydrateFromLogSummary(logSummary: string): StoryBeat[] {
       still: null,
       placeLine: null,
       playerLine: null,
+      mechanicsLine: null,
     }))
     .filter((b) => b.prose.length > 0);
 }
@@ -125,6 +133,7 @@ function toRecord(beat: StoryBeat): StoryBeatRecord {
     stillCacheKey: beat.still?.cacheKey ?? null,
     placeLine: beat.placeLine,
     playerLine: beat.playerLine,
+    ...(beat.mechanicsLine ? { mechanicsLine: beat.mechanicsLine } : {}),
   };
 }
 
@@ -172,28 +181,12 @@ export function SceneScreen({
 
   const applyBeat = useCallback(
     (beat: SceneBeatResult) => {
-      let prose = playerFacingProse(beat.prose);
+      // NARR-04: no duplicate padding — the narr.last.* anti-repeat flags already
+      // keep the same line from landing twice in a row.
+      const prose = playerFacingProse(beat.prose);
       const playerLine = pendingPlayerLine.current;
       pendingPlayerLine.current = null;
       const placeLine = naturalPlaceLine(beat.where);
-      // NARR-02c: never stack identical consecutive narrator lines.
-      const prior = beatsRef.current;
-      const lastNarr =
-        prior.length > 0 && !prior[prior.length - 1]!.id.startsWith('pending-')
-          ? prior[prior.length - 1]!
-          : prior.length > 1
-            ? prior[prior.length - 2]!
-            : null;
-      if (
-        lastNarr &&
-        lastNarr.prose.trim() === prose.trim() &&
-        (playerLine ?? '') === (lastNarr.playerLine ?? '')
-      ) {
-        const whereName = beat.where?.name?.trim();
-        prose = whereName
-          ? `${prose} The beat at ${whereName} edges forward — a new sound, a shifted light.`
-          : `${prose} The beat edges forward — a new sound, a shifted light.`;
-      }
       const entry: StoryBeat = {
         id: `${beat.campaign.session.turn}-${Date.now()}`,
         prose,
@@ -201,6 +194,7 @@ export function SceneScreen({
         still: beat.still,
         placeLine,
         playerLine,
+        mechanicsLine: beat.mechanicsLine ?? null,
       };
       // Replace optimistic pending narrator bubble if present (NARR-01).
       const base =
@@ -280,6 +274,7 @@ export function SceneScreen({
           still: null,
           placeLine: null,
           playerLine,
+          mechanicsLine: null,
         };
         const base =
           beatsRef.current.length > 0 &&
@@ -464,6 +459,7 @@ export function SceneScreen({
       still: null,
       placeLine: null,
       playerLine: text,
+      mechanicsLine: null,
     };
     const next = [...beatsRef.current, pending].slice(-MAX_STORY_BEATS);
     beatsRef.current = next;
@@ -505,6 +501,11 @@ export function SceneScreen({
         <Text style={styles.dmName}>Narrator</Text>
         <View style={styles.dmBubble}>
           <Text style={styles.prose}>{b.prose}</Text>
+          {b.mechanicsLine ? (
+            <Text style={styles.mechanicsLine} accessibilityLabel={`Mechanics: ${b.mechanicsLine}`}>
+              {b.mechanicsLine}
+            </Text>
+          ) : null}
           {b.checkLine ? (
             <View style={styles.checkCard}>
               <Text style={styles.checkLabel}>Check</Text>
@@ -851,6 +852,13 @@ const styles = StyleSheet.create({
     // UX-02: larger DM/narrator bubble text for phone readability
     fontSize: 18,
     lineHeight: 28,
+  },
+  mechanicsLine: {
+    marginTop: theme.spacing.xs,
+    color: theme.colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+    letterSpacing: 0.2,
   },
   checkCard: {
     borderWidth: 1,

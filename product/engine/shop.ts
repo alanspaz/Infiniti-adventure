@@ -16,10 +16,29 @@ import {
   type InventoryItem,
   type MerchantState,
 } from './campaignState';
-import { itemNarrationPatch, itemTraits } from './items';
-import { createStarterMap } from './map';
+import { itemNarrationPatch, itemTraits, withBeatPatch } from './items';
+import { createStarterMap } from './mapGraph';
 import { npcForMerchant } from './npcs';
 import type { CampaignSave } from './save';
+import {
+  MERCHANT_TRADE,
+  NPC_KEEPER_NOTES,
+  TRADE_IN_COMBAT,
+  TRADE_NOBODY,
+  type MerchantId,
+  type NpcId,
+  type TradePath,
+} from './narration/lineBanks';
+import {
+  foeTokens,
+  itemWord,
+  mechanicsLineFor,
+  placeRefFor,
+  recordCtxFor,
+  recordLine,
+  voiceFor,
+  type Voice,
+} from './narration/voice';
 
 export type MerchantDef = {
   id: string;
@@ -298,10 +317,33 @@ export type TradeResult = {
   patch: CampaignStatePatch | null;
   narration: string | null;
   playerLine: string | null;
+  /** NARR-04: numbers for the beat (e.g. `−1 gold · Trail rations`). */
+  mechanicsLine?: string | null;
+  narrFlags?: Record<string, string>;
 };
 
-function reject(kind: TradeRequest['kind'], message: string): TradeResult {
-  return { ok: false, kind, message, patch: null, narration: null, playerLine: null };
+/** Panel message keeps the numbers; `narration` (Tale) is the bank line, number-free. */
+function reject(kind: TradeRequest['kind'], message: string, narration: string | null = null, narrFlags?: Record<string, string>): TradeResult {
+  return { ok: false, kind, message, patch: null, narration, playerLine: null, ...(narrFlags ? { narrFlags } : {}) };
+}
+
+/** "Hollis" from "Hollis the innkeeper" — prose and records use the short name. */
+export function keeperShortName(def: MerchantDef): string {
+  return def.keeper.split(' ')[0] ?? def.keeper;
+}
+
+/** NPC short name for item origins ("Bought from Dagna"). */
+function npcShortName(def: MerchantDef): string {
+  const npc = npcForMerchant(def.id);
+  return (npc?.name ?? def.keeper).split(' ')[0] ?? def.keeper;
+}
+
+function tradeLine(voice: Voice, def: MerchantDef, path: TradePath, state: CampaignState, item?: InventoryItem): string | null {
+  return voice.say(`trade.${def.id}.${path}`, MERCHANT_TRADE[def.id as MerchantId]?.[path], {
+    keeper: keeperShortName(def),
+    place: placeRefFor(state.locationId),
+    ...(item ? { item: itemWord(item.name) } : {}),
+  });
 }
 
 function takeOne(items: InventoryItem[], id: string): InventoryItem[] {
@@ -331,19 +373,36 @@ function giveOne(items: InventoryItem[], item: InventoryItem): InventoryItem[] {
 
 /** Pure rules: resolve a buy/sell. Rejections never carry a patch. */
 export function resolveTrade(state: CampaignState, req: TradeRequest): TradeResult {
+  const voice = voiceFor(state);
   const def = getMerchantDef(req.merchantId);
-  if (!def) return reject(req.kind, 'No one here is trading.');
-  if (state.combat.inCombat) return reject(req.kind, 'No haggling mid-fight.');
+  if (!def) {
+    return reject(req.kind, 'No one here is trading.', voice.say('trade.nobody', TRADE_NOBODY, { place: placeRefFor(state.locationId) }), voice.flags());
+  }
+  if (state.combat.inCombat) {
+    return reject(req.kind, 'No haggling mid-fight.', voice.say('trade.combat', TRADE_IN_COMBAT, foeTokens(state.combat.foe?.name)), voice.flags());
+  }
   const m = merchantState(state, req.merchantId);
   const player = state.inventory;
+  const rc = recordCtxFor(state.campaignId, state.playstylePackId);
+  const npc = npcForMerchant(def.id);
 
   if (req.kind === 'buy') {
-    const item = m.stock.find((i) => i.id === req.itemId);
-    if (!item) return reject('buy', `${def.keeper} has none of that left.`);
+    const stockRow = m.stock.find((i) => i.id === req.itemId);
+    if (!stockRow) {
+      const listed = def.stock.find((i) => i.id === req.itemId);
+      return reject('buy', `${keeperShortName(def)} has none of that left.`, tradeLine(voice, def, 'soldOut', state, listed), voice.flags());
+    }
+    const item = stockRow;
     const price = buyPrice(state, def.id, item);
     if (player.gold < price) {
-      return reject('buy', `Not enough gold: ${item.name} costs ${price}, you have ${player.gold}.`);
+      return reject(
+        'buy',
+        `Not enough gold: ${item.name} costs ${price}, you have ${player.gold}.`,
+        tradeLine(voice, def, 'tooDear', state, item),
+        voice.flags(),
+      );
     }
+    const narration = tradeLine(voice, def, 'buy', state, item) ?? `${keeperShortName(def)} hands over the ${itemWord(item.name)}.`;
     return {
       ok: true,
       kind: 'buy',
@@ -358,13 +417,21 @@ export function resolveTrade(state: CampaignState, req: TradeRequest): TradeResu
           itemId: item.id,
           name: item.name,
           how: 'bought',
-          source: def.keeper,
+          source: npcShortName(def),
           locationId: state.locationId,
         },
-        ...keeperNote(def.id, state.locationId, `Sold you ${articled(item.name)} for ${price} gold.`),
+        ...keeperNote(
+          def.id,
+          state.locationId,
+          recordLine(NPC_KEEPER_NOTES[npc?.id as NpcId]?.sold, rc, `sold:${item.id}:${state.session.turn}`, {
+            item: itemWord(item.name),
+          }) ?? `Sold you the ${itemWord(item.name)}.`,
+        ),
       },
-      narration: `${def.keeper} takes your ${price} gold and hands over the ${item.name.toLowerCase()}.`,
+      narration,
       playerLine: `Buy ${item.name}`,
+      mechanicsLine: mechanicsLineFor({ gold: -price, itemsGained: [item.name] }),
+      narrFlags: voice.flags(),
     };
   }
 
@@ -373,13 +440,21 @@ export function resolveTrade(state: CampaignState, req: TradeRequest): TradeResu
   if (item.kind === 'quest') {
     return reject('sell', `${item.name} matters to a quest — it isn't for sale.`);
   }
+  const sellRc = recordCtxFor(state.campaignId, state.playstylePackId);
   if (item.equipped) {
     return reject('sell', `You're using ${item.name} — unequip it first.`);
   }
   const price = sellPrice(state, def.id, item);
   if (m.gold < price) {
-    return reject('sell', `${def.keeper} can't afford it: offers ${price}, has only ${m.gold} gold.`);
+    return reject(
+      'sell',
+      `${keeperShortName(def)} can't afford it: offers ${price}, has only ${m.gold} gold.`,
+      tradeLine(voice, def, 'keeperBroke', state, item),
+      voice.flags(),
+    );
   }
+  const sellNarration =
+    tradeLine(voice, def, 'sell', state, item) ?? `${keeperShortName(def)} takes the ${itemWord(item.name)} and pays you.`;
   return {
     ok: true,
     kind: 'sell',
@@ -389,15 +464,19 @@ export function resolveTrade(state: CampaignState, req: TradeRequest): TradeResu
       merchants: {
         [def.id]: { gold: m.gold - price, stock: giveOne(m.stock, item), asOfTurn: m.asOfTurn ?? state.session.turn },
       },
-      ...keeperNote(def.id, state.locationId, `Bought your ${item.name.toLowerCase()} for ${price} gold.`),
+      ...keeperNote(
+        def.id,
+        state.locationId,
+        recordLine(NPC_KEEPER_NOTES[npc?.id as NpcId]?.bought, sellRc, `bought:${item.id}:${state.session.turn}`, {
+          item: itemWord(item.name),
+        }) ?? `Bought your ${itemWord(item.name)}.`,
+      ),
     },
-    narration: `${def.keeper} turns the ${item.name.toLowerCase()} over once, then counts ${price} gold into your palm.`,
+    narration: sellNarration,
     playerLine: `Sell ${item.name}`,
+    mechanicsLine: mechanicsLineFor({ gold: price, itemsLost: [item.name] }),
+    narrFlags: voice.flags(),
   };
-}
-
-function articled(name: string): string {
-  return /^[aeiou]/i.test(name) ? `an ${name.toLowerCase()}` : `a ${name.toLowerCase()}`;
 }
 
 /** TABS-01: a relationship note on the NPC behind a merchant. */
@@ -420,7 +499,14 @@ export function applyTrade(
   if (!result.ok || !result.patch) return { campaign, result };
   let patch = result.patch;
   if (result.narration) {
-    patch = { ...patch, ...itemNarrationPatch(state, result.narration, result.playerLine, now) };
+    patch = withBeatPatch(
+      patch,
+      itemNarrationPatch(state, result.narration, result.playerLine, now, {
+        mechanicsLine: result.mechanicsLine ?? null,
+        narrFlags: result.narrFlags ?? {},
+        event: 'justTraded',
+      }),
+    );
   }
   return { campaign: applyCampaignPatch(campaign, patch), result };
 }
@@ -438,13 +524,16 @@ export function openShopAt(state: CampaignState): {
   merchantId: string | null;
   patch: CampaignStatePatch | null;
   narration: string;
+  narrFlags?: Record<string, string>;
 } {
+  const voice = voiceFor(state);
   if (state.combat.inCombat) {
     return {
       ok: false,
       merchantId: null,
       patch: null,
-      narration: 'Not now — there is a fight on your hands.',
+      narration: voice.say('trade.combat', TRADE_IN_COMBAT, foeTokens(state.combat.foe?.name)) ?? 'The shop can wait.',
+      narrFlags: voice.flags(),
     };
   }
   const def = merchantForLocation(state.locationId);
@@ -454,7 +543,8 @@ export function openShopAt(state: CampaignState): {
       merchantId: null,
       patch: null,
       narration:
-        'No one here is selling anything. In Emberford, try the Copper Kettle, Brightanvil Smithy, or Mossglass Alchemist.',
+        voice.say('trade.nobody', TRADE_NOBODY, { place: placeRefFor(state.locationId) }) ?? 'Nobody here is selling.',
+      narrFlags: voice.flags(),
     };
   }
   return {
@@ -463,7 +553,8 @@ export function openShopAt(state: CampaignState): {
     patch: {
       shop: { activeMerchantId: def.id, atLocationId: state.locationId ?? null },
     },
-    narration: def.greeting,
+    narration: tradeLine(voice, def, 'open', state) ?? def.greeting,
+    narrFlags: voice.flags(),
   };
 }
 
@@ -482,10 +573,10 @@ export function applyOpenShop(
 ): { campaign: CampaignSave; ok: boolean; merchantId: string | null } {
   const state = campaignToState(campaign);
   const open = openShopAt(state);
-  const patch: CampaignStatePatch = {
-    ...(open.patch ?? {}),
-    ...itemNarrationPatch(state, open.narration, playerLine, now),
-  };
+  const patch: CampaignStatePatch = withBeatPatch(
+    open.patch ?? {},
+    itemNarrationPatch(state, open.narration, playerLine, now, { narrFlags: open.narrFlags ?? {} }),
+  );
   return {
     campaign: applyCampaignPatch(campaign, patch),
     ok: open.ok,

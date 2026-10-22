@@ -24,3 +24,5 @@ export * from './input';
 export * from './npcs';
 export * from './chronicle';
 export * from './tabs';
+export * from './narration/lineBanks';
+export * from './narration/voice';
