@@ -4,6 +4,7 @@ import {
   campaignSaveKey,
 } from './persist';
 import { backfillChronicle } from './chronicle';
+import { recordCtxFor } from './narration/voice';
 import {
   QUEST_ARRIVAL_TRIGGERS,
   STARTER_QUEST,
@@ -28,6 +29,11 @@ export type StoryBeatRecord = {
   placeLine: string | null;
   /** Optional player action line for chat bubbles. */
   playerLine: string | null;
+  /**
+   * NARR-04: compact mechanics line shown under the prose (XP, gold, items, HP).
+   * Built from the engine's own delta — prose never carries numbers. Optional for older saves.
+   */
+  mechanicsLine?: string | null;
 };
 
 export type SessionState = {
@@ -102,6 +108,9 @@ function normalizeStoryBeats(
       b.playerLine === undefined || b.playerLine === null
         ? null
         : String(b.playerLine),
+    ...(typeof b.mechanicsLine === 'string' && b.mechanicsLine.trim()
+      ? { mechanicsLine: b.mechanicsLine }
+      : {}),
   }));
 }
 
@@ -142,7 +151,7 @@ export function createCampaign(input: CreateCampaignInput): CampaignSave {
     session,
     flags: { ...(input.flags ?? {}) },
     // TABS-01: a new campaign's chronicle opens with its quests + start place.
-    world: input.world?.chronicle !== undefined ? world : migrateWorldToV2(world, session),
+    world: input.world?.chronicle !== undefined ? world : migrateWorldToV2(world, session, { campaignId: input.id, playstylePackId: input.playstylePackId ?? null }),
   };
 }
 
@@ -244,7 +253,10 @@ function isStoryBeatRecord(value: unknown): value is StoryBeatRecord {
       typeof b.placeLine === 'string') &&
     (b.playerLine === undefined ||
       b.playerLine === null ||
-      typeof b.playerLine === 'string')
+      typeof b.playerLine === 'string') &&
+    (b.mechanicsLine === undefined ||
+      b.mechanicsLine === null ||
+      typeof b.mechanicsLine === 'string')
   );
 }
 
@@ -325,7 +337,10 @@ export function parseCampaign(json: string): CampaignSave {
   let world = normalizeWorld(rawWorld);
   // TABS-01 migration v1 → v2: default the chronicle from what the save holds.
   if (o.schemaVersion !== SAVE_SCHEMA_VERSION || !rawWorld || rawWorld.chronicle === undefined) {
-    world = migrateWorldToV2(world, session);
+    world = migrateWorldToV2(world, session, {
+      campaignId: String(o.id),
+      playstylePackId: typeof o.playstylePackId === 'string' ? o.playstylePackId : null,
+    });
   }
   return {
     schemaVersion: SAVE_SCHEMA_VERSION,
@@ -345,6 +360,7 @@ export function parseCampaign(json: string): CampaignSave {
 export function migrateWorldToV2(
   world: CampaignWorldState,
   session: SessionState,
+  record?: { campaignId: string; playstylePackId: string | null },
 ): CampaignWorldState {
   return {
     ...world,
@@ -354,6 +370,7 @@ export function migrateWorldToV2(
       items: world.inventory.items,
       quests: world.quests,
       arrivalTrigger: (id) => QUEST_ARRIVAL_TRIGGERS[id] ?? null,
+      ...(record ? { record: recordCtxFor(record.campaignId, record.playstylePackId) } : {}),
     }),
   };
 }

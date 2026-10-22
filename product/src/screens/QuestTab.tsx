@@ -1,16 +1,11 @@
 import React from 'react';
+import { TAB_COPY } from '../../engine/narration/lineBanks';
 import { ScrollView, Text, View } from 'react-native';
 import { selectQuestTab, type QuestTabEntry } from '../../engine';
 import { useCampaignState } from '../campaign';
 import { Card, Section, kit } from './infoTabKit';
 
-const KIND_LABEL: Record<string, string> = {
-  given: 'Given',
-  known: 'Known',
-  lead: 'Lead',
-  done: 'Done',
-  failed: 'Failed',
-};
+const KIND_LABEL: Record<string, string> = TAB_COPY.quests.kindLabel;
 
 function QuestCard({ e }: { e: QuestTabEntry }) {
   const q = e.quest;
@@ -56,10 +51,9 @@ export function QuestTab() {
       <Text style={kit.hint}>{state.title}</Text>
       {total === 0 ? (
         <Card>
-          <Text style={kit.emptyTitle}>No quests yet</Text>
+          <Text style={kit.emptyTitle}>{TAB_COPY.quests.emptyTitle}</Text>
           <Text style={kit.emptyBody}>
-            Your journal is quiet for now. Objectives will appear here when the adventure gives you
-            something to chase.
+            {TAB_COPY.quests.emptyBody}
           </Text>
         </Card>
       ) : (

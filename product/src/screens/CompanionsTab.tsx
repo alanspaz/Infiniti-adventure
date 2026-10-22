@@ -1,4 +1,5 @@
 import React from 'react';
+import { TAB_COPY } from '../../engine/narration/lineBanks';
 import { ScrollView, Text, View } from 'react-native';
 import { selectCompanionsTab } from '../../engine';
 import { useCampaignState } from '../campaign';
@@ -46,15 +47,15 @@ export function CompanionsTab() {
         ))
       )}
 
-      <Section>People you've met ({tab.npcs.length})</Section>
+      <Section>{TAB_COPY.companions.people} ({tab.npcs.length})</Section>
       {tab.npcs.length === 0 ? (
-        <Text style={kit.muted}>No one yet. The people you meet in the Tale are noted here.</Text>
+        <Text style={kit.muted}>{TAB_COPY.companions.peopleEmpty}</Text>
       ) : (
         tab.npcs.map((n) => (
           <Card key={n.id}>
             <Text style={kit.title}>{n.name}</Text>
             {n.role ? <Text style={kit.meta}>{n.role}</Text> : null}
-            {n.lastSeenName ? <Text style={kit.meta}>Last seen: {n.lastSeenName}</Text> : null}
+            {n.lastSeenName ? <Text style={kit.meta}>{TAB_COPY.companions.lastSeen} {n.lastSeenName}</Text> : null}
             <View>
               <Notes notes={n.notes} />
             </View>

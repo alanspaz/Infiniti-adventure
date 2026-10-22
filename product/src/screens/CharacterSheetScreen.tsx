@@ -1,4 +1,5 @@
 import React from 'react';
+import { TAB_COPY } from '../../engine/narration/lineBanks';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { AbilityKey, CampaignSave } from '../../engine';
@@ -124,11 +125,11 @@ export function CharacterSheetScreen({ onBack, embedded = false }: Props) {
             })()}
             <Bar pct={tab.maxHp > 0 ? tab.hp / tab.maxHp : 0} />
             <Text style={styles.metaSmall}>
-              {tab.conditions.length ? tab.conditions.join(' · ') : 'No conditions'}
+              {tab.conditions.length ? tab.conditions.join(' · ') : TAB_COPY.character.noConditions}
             </Text>
           </View>
 
-          <Text style={styles.section}>Story so far</Text>
+          <Text style={styles.section}>{TAB_COPY.character.storyHeading}</Text>
           <View style={styles.card}>
             <Text style={styles.storyLine}>{tab.storySoFar}</Text>
           </View>

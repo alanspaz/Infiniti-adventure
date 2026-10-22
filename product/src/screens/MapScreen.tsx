@@ -1,4 +1,6 @@
 import React from 'react';
+import { TAB_COPY } from '../../engine/narration/lineBanks';
+import { chainLevelLabel } from '../../engine/tabs';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { CampaignSave } from '../../engine';
 import { selectMapTab } from '../../engine';
@@ -43,19 +45,18 @@ export function MapScreen({ embedded = false, onBack }: Props) {
 
       <Text style={styles.title}>Map</Text>
       <Text style={styles.hint}>
-        You see where you are and what is nearby. To travel, write it in the Tale
-        — the narrator and campaign state move you.
+        {TAB_COPY.map.hint}
       </Text>
 
       {!map.hereName ? (
-        <Text style={styles.muted}>Your whereabouts aren't on the map yet.</Text>
+        <Text style={styles.muted}>{TAB_COPY.map.unmapped}</Text>
       ) : (
         <>
           <View style={styles.card}>
-            <Text style={styles.pathLabel}>Here</Text>
+            <Text style={styles.pathLabel}>{TAB_COPY.map.here}</Text>
             {map.chain.map((link, i) => (
               <View key={link.id} style={[styles.chainRow, { paddingLeft: i * 10 }]}>
-                <Text style={styles.chainLevel}>{link.level}</Text>
+                <Text style={styles.chainLevel}>{chainLevelLabel(link.level)}</Text>
                 <Text style={i === map.chain.length - 1 ? styles.chainHere : styles.chainName}>
                   {link.name}
                 </Text>
@@ -64,9 +65,9 @@ export function MapScreen({ embedded = false, onBack }: Props) {
             {map.description ? <Text style={styles.body}>{map.description}</Text> : null}
           </View>
 
-          <Text style={styles.section}>Nearby</Text>
+          <Text style={styles.section}>{TAB_COPY.map.nearby}</Text>
           {map.exits.length === 0 ? (
-            <Text style={styles.muted}>Nothing obvious nearby from here.</Text>
+            <Text style={styles.muted}>{TAB_COPY.map.nearbyEmpty}</Text>
           ) : (
             map.exits.map((ex) => (
               <View key={`${ex.label}-${ex.toName}`} style={styles.nearby}>
@@ -78,15 +79,15 @@ export function MapScreen({ embedded = false, onBack }: Props) {
         </>
       )}
 
-      <Text style={styles.section}>Places you've been ({map.visited.length})</Text>
+      <Text style={styles.section}>{TAB_COPY.map.visited} ({map.visited.length})</Text>
       {map.visited.length === 0 ? (
-        <Text style={styles.muted}>Nowhere yet.</Text>
+        <Text style={styles.muted}>{TAB_COPY.map.visitedEmpty}</Text>
       ) : (
         map.visited.map((p) => (
           <View key={p.id} style={styles.nearby}>
             <Text style={styles.exitLabel}>
               {p.name}
-              {p.here ? '  · you are here' : ''}
+              {p.here ? `  ${TAB_COPY.map.youAreHere}` : ''}
             </Text>
             {p.within ? <Text style={styles.exitMeta}>{p.within}</Text> : null}
             <Notes notes={p.notes} />
@@ -94,9 +95,9 @@ export function MapScreen({ embedded = false, onBack }: Props) {
         ))
       )}
 
-      <Text style={styles.section}>Heard of, not yet visited ({map.known.length})</Text>
+      <Text style={styles.section}>{TAB_COPY.map.known} ({map.known.length})</Text>
       {map.known.length === 0 ? (
-        <Text style={styles.muted}>No one has told you of anywhere else yet.</Text>
+        <Text style={styles.muted}>{TAB_COPY.map.knownEmpty}</Text>
       ) : (
         map.known.map((p) => (
           <View key={p.id} style={styles.nearby}>

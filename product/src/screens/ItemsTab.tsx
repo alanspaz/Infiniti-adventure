@@ -196,6 +196,9 @@ function ItemRow({
           <Text style={styles.itemName}>{item.name || 'Item'}</Text>
           <Text style={styles.itemMeta}>{meta}</Text>
           {origin ? <Text style={styles.itemOrigin}>{origin.line}</Text> : null}
+          {origin && origin.earlier.length ? (
+            <Text style={styles.itemOrigin}>Before that: {origin.earlier.join('; ')}</Text>
+          ) : null}
         </View>
         {item.equipped ? <Text style={styles.badge}>Equipped</Text> : null}
       </Pressable>

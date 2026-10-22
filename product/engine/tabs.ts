@@ -23,11 +23,32 @@ import {
 } from './chronicle';
 import { abilityModifier, deriveStats } from './derived';
 import { equippedLoadout, itemTraits } from './items';
-import { INTERIOR_FLOORS, QUEST_GIVERS, getNpcDef } from './npcs';
+import { INTERIOR_FLOORS, QUEST_GIVERS, getNpcDef, NPCS } from './npcs';
+import {
+  CHAIN_LEVEL_LABELS,
+  FLOOR_LABELS,
+  ITEM_ORIGIN,
+  STORY_SO_FAR,
+  TAB_COPY,
+  composeLine,
+  listJoinWords,
+  numberWord,
+  type Bank,
+  type TokenValues,
+} from './narration/lineBanks';
+import {
+  foeArticled,
+  placeRefFor,
+  recordCtxFor,
+  recordLineContext,
+  stablePick,
+  type RecordCtx,
+} from './narration/voice';
+import { questArrivalLead } from './chronicle';
 import { tryLoadPlaystylePack } from './pack';
 import { progressionSummary } from './progression';
 import { merchantForLocation } from './shop';
-import type { MapNodeKind } from './map';
+import type { MapNodeKind } from './mapGraph';
 import { ABILITY_KEYS, type AbilityKey, type CharacterSheet, type PartyRole } from './types';
 
 /* ---------------- Character ---------------- */
@@ -95,30 +116,78 @@ export function characterConditions(state: CampaignState): string[] {
   return out;
 }
 
-function listJoin(xs: string[]): string {
-  if (xs.length <= 1) return xs.join('');
-  return `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
+function rcFor(state: CampaignState): RecordCtx {
+  return recordCtxFor(state.campaignId, state.playstylePackId);
+}
+
+/** RENDERED copy: stable per campaign + key (never the turn rng), so tabs don't flicker. */
+function stableLine(rc: RecordCtx, bank: Bank, key: string, values: TokenValues): string | null {
+  const ctx = recordLineContext(rc);
+  const line = stablePick(bank, ctx, rc.campaignId, key);
+  const text = line ? composeLine(line, 'short', values) : null;
+  if (text) return text;
+  // A tagged line can lack a token; fall back to the first line that composes.
+  for (const l of bank) {
+    if (l.when) continue;
+    const t = composeLine(l, 'short', values);
+    if (t) return t;
+  }
+  return null;
 }
 
 /**
- * One short line built only from recorded events: titles, deeds, people
- * who know you. Empty chronicle → a neutral line, never made-up prose.
+ * NARR-04: "The tale so far", built from structured chronicle facts only
+ * (titles, deeds with foeName/locationId/questTitle/level, people), never
+ * by parsing deed text. Order: titles, then deeds by turn (victories and
+ * quests interleaved by when they first happened), then level, then people.
  */
 export function storySoFar(state: CampaignState): string {
   const c = state.chronicle;
+  const rc = rcFor(state);
   const parts: string[] = [];
-  if (c.titles.length) parts.push(`Known as ${listJoin(c.titles)}`);
-  const victories = c.deeds.filter((d) => d.kind === 'victory');
-  if (victories.length === 1) parts.push(victories[0]!.text);
-  else if (victories.length > 1) parts.push(`Won ${victories.length} fights (last: ${victories[victories.length - 1]!.text.replace(/^Defeated /, '')})`);
-  const quests = c.deeds.filter((d) => d.kind === 'quest');
-  if (quests.length) parts.push(listJoin(quests.map((d) => d.text)));
-  const level = [...c.deeds].reverse().find((d) => d.kind === 'level');
-  if (level) parts.push(level.text);
-  const known = Object.values(c.npcs).map((n) => n.name);
-  if (known.length) parts.push(`Known to ${listJoin(known)}`);
-  if (parts.length === 0) return 'Your story is just beginning.';
-  return `${parts.join('. ')}.`;
+  if (c.titles.length) {
+    const t = stableLine(rc, STORY_SO_FAR.titles, `titles:${c.titles.join('|')}`, { titles: listJoinWords(c.titles) });
+    if (t) parts.push(t);
+  }
+  const timed: { turn: number; text: string }[] = [];
+  const victories = c.deeds.filter((d) => d.kind === 'victory' && d.foeName);
+  if (victories.length) {
+    const last = victories[victories.length - 1]!;
+    const values: TokenValues = {
+      foeA: foeArticled(last.foeName!),
+      where: placeRefFor(last.locationId, 'the wilds'),
+      fightCount: numberWord(victories.length),
+    };
+    const t =
+      victories.length === 1
+        ? stableLine(rc, STORY_SO_FAR.victoryOne, `victoryOne:${last.turn}`, values)
+        : stableLine(rc, STORY_SO_FAR.victoryMany, `victoryMany:${victories.length}`, values);
+    if (t) timed.push({ turn: victories[0]!.turn, text: t });
+  }
+  const quests = c.deeds.filter((d) => d.kind === 'quest' && d.questTitle);
+  if (quests.length) {
+    const titles = quests.map((d) => `“${d.questTitle}”`);
+    const t = stableLine(rc, STORY_SO_FAR.quests, `quests:${quests.length}`, { quests: listJoinWords(titles) });
+    if (t) timed.push({ turn: quests[0]!.turn, text: t });
+  }
+  timed.sort((a, b) => a.turn - b.turn);
+  parts.push(...timed.map((x) => x.text));
+  const level = [...c.deeds].reverse().find((d) => d.kind === 'level' && d.level);
+  if (level?.level) {
+    const t = stableLine(rc, STORY_SO_FAR.level, `level:${level.level}`, { levelWord: numberWord(level.level, String(level.level)) });
+    if (t) parts.push(t);
+  }
+  const known = Object.values(c.npcs)
+    .sort((a, b) => a.firstMetTurn - b.firstMetTurn || a.name.localeCompare(b.name))
+    .map((n) => n.name.split(/\s+/)[0] ?? n.name);
+  if (known.length) {
+    const t = stableLine(rc, known.length === 1 ? STORY_SO_FAR.knownOne : STORY_SO_FAR.knownMany, `known:${known.length}`, {
+      people: listJoinWords(known),
+    });
+    if (t) parts.push(t);
+  }
+  if (parts.length === 0) return stableLine(rc, STORY_SO_FAR.empty, 'empty', {}) ?? 'Your story is just beginning.';
+  return parts.join(' ');
 }
 
 export function selectCharacterTab(state: CampaignState): CharacterTab | null {
@@ -190,14 +259,34 @@ function levelFor(id: string, kind: MapNodeKind): MapChainLink['level'] {
   return KIND_LEVEL[kind];
 }
 
+/** Display label for a chain level ("Area" → "Open country"). */
+export function chainLevelLabel(level: MapChainLink['level']): string {
+  return CHAIN_LEVEL_LABELS[level] ?? level;
+}
+
+/** True when the interior's building has rooms on more than one floor. */
+function multiFloor(interiorId: string): boolean {
+  const g = chronicleMap();
+  const parent = mapChain(interiorId).slice(-2, -1)[0];
+  if (!parent) return false;
+  const floors = new Set(
+    Object.values(g.nodes)
+      .filter((n) => n.kind === 'interior' && mapChain(n.id).slice(-2, -1)[0]?.id === parent.id)
+      .map((n) => FLOOR_LABELS[n.id as keyof typeof FLOOR_LABELS] ?? INTERIOR_FLOORS[n.id] ?? ''),
+  );
+  return floors.size > 1;
+}
+
 export function selectMapTab(state: CampaignState): MapTab {
   const g = chronicleMap();
   const hereId = state.locationId;
   const here = hereId ? g.nodes[hereId] : undefined;
   const chain: MapChainLink[] = [];
   for (const n of mapChain(hereId)) {
-    if (n.kind === 'interior' && INTERIOR_FLOORS[n.id]) {
-      chain.push({ level: 'Floor', id: `${n.id}#floor`, name: INTERIOR_FLOORS[n.id]! });
+    // NARR-04: floors only for buildings with more than one (the Kettle); FLOOR_LABELS copy.
+    if (n.kind === 'interior' && INTERIOR_FLOORS[n.id] && multiFloor(n.id)) {
+      const label = FLOOR_LABELS[n.id as keyof typeof FLOOR_LABELS] ?? INTERIOR_FLOORS[n.id]!;
+      chain.push({ level: 'Floor', id: `${n.id}#floor`, name: label });
     }
     chain.push({ level: levelFor(n.id, n.kind), id: n.id, name: n.name });
   }
@@ -239,41 +328,56 @@ export function selectMapTab(state: CampaignState): MapTab {
 
 /* ---------------- Gear ---------------- */
 
-export type GearOrigin = { line: string; lore: string | null };
-
-const HOW_LABEL: Record<ItemOriginRecord['how'], string> = {
-  starter: 'From your starting kit',
-  bought: 'Bought',
-  loot: 'Taken from',
-  reward: 'Reward from',
-  found: 'Found',
-  carried: 'Already in your pack',
+export type GearOrigin = {
+  line: string;
+  lore: string | null;
+  /** NARR-04: earlier acquisitions, newest first (history keeps the last three). */
+  earlier: string[];
 };
 
-/** "Bought from Dagna Brightanvil at the Forge Floor" — facts only. */
-export function itemOriginLine(rec: ItemOriginRecord | undefined): string | null {
-  if (!rec) return null;
-  const where = rec.locationId && mapNodeName(rec.locationId) ? ` at ${placePhrase(rec.locationId)}` : '';
-  switch (rec.how) {
+/** "Dagna Brightanvil" / "Hollis the innkeeper" → "Dagna" / "Hollis" (legacy saves stored the long form). */
+function npcShortFromSource(source: string | null): string | null {
+  if (!source) return null;
+  const npc = NPCS.find((n) => source === n.name || source.startsWith(n.name.split(' ')[0]!));
+  return npc ? (npc.name.split(' ')[0] ?? npc.name) : source.split(/\s+/)[0] ?? source;
+}
+
+function fill(t: string, values: Record<string, string>): string {
+  return t.replace(/\{(\w+)\}/g, (_, k: string) => values[k] ?? '');
+}
+
+/** Gear origin line from ITEM_ORIGIN (facts only). */
+export function originEntryLine(e: { how: ItemOriginRecord['how']; source: string | null; locationId: string | null }): string {
+  const where = e.locationId && mapNodeName(e.locationId) ? placeRefFor(e.locationId) : null;
+  switch (e.how) {
     case 'starter':
-      return `${HOW_LABEL.starter}${where}`;
-    case 'bought':
-      return `Bought${rec.source ? ` from ${rec.source}` : ''}${where}`;
+      return ITEM_ORIGIN.starter;
+    case 'bought': {
+      const npc = npcShortFromSource(e.source);
+      return npc ? fill(ITEM_ORIGIN.bought, { npc }) : 'Bought';
+    }
     case 'loot':
-      return `Taken from ${rec.source ? `${/^[aeiou]/i.test(rec.source) ? 'an' : 'a'} ${rec.source.toLowerCase()}` : 'a fallen foe'}${where}`;
-    case 'reward':
-      return `Reward${rec.source ? ` from ${rec.source}` : ''}${where}`;
+      return e.source && where ? fill(ITEM_ORIGIN.loot, { foeA: foeArticled(e.source), where }) : ITEM_ORIGIN.lootNoWhere;
+    case 'reward': {
+      const npc = npcShortFromSource(e.source);
+      return npc ? fill(ITEM_ORIGIN.reward, { npc }) : 'A reward';
+    }
     case 'found':
-      return `Found${where}`;
+      return where ? fill(ITEM_ORIGIN.found, { where }) : ITEM_ORIGIN.foundNoWhere;
     case 'carried':
     default:
-      return HOW_LABEL.carried;
+      return ITEM_ORIGIN.carried;
   }
+}
+
+export function itemOriginLine(rec: ItemOriginRecord | undefined): string | null {
+  return rec ? originEntryLine(rec) : null;
 }
 
 export function itemOrigin(chronicle: ChronicleState, itemId: string): GearOrigin {
   const rec = chronicle.items[itemId];
-  return { line: itemOriginLine(rec) ?? HOW_LABEL.carried, lore: rec?.lore ?? null };
+  const earlier = rec ? rec.history.slice(0, -1).reverse().map(originEntryLine) : [];
+  return { line: itemOriginLine(rec) ?? ITEM_ORIGIN.carried, lore: rec?.lore ?? null, earlier };
 }
 
 export type GearTab = {
@@ -331,7 +435,9 @@ export function selectQuestTab(state: CampaignState): QuestTab {
       nextLead:
         q.status !== 'active'
           ? null
-          : (leads[leads.length - 1]?.text ?? q.progressNotes ?? (trigger ? `Step out into ${mapNodeName(trigger)}` : null)),
+          : (leads[leads.length - 1]?.text ??
+            q.progressNotes ??
+            (trigger ? questArrivalLead(q.id, trigger, rcFor(state)) : null)),
       journal,
     };
   };
@@ -361,7 +467,7 @@ export function selectCompanionsTab(state: CampaignState): CompanionsTab {
     .map((n) => ({
       ...n,
       lastSeenName: n.lastSeenLocationId ? mapNodeName(n.lastSeenLocationId) : null,
-      relationship: n.notes.length ? n.notes[n.notes.length - 1]! : 'Met.',
+      relationship: n.notes.length ? n.notes[n.notes.length - 1]! : TAB_COPY.companions.relationshipFallback,
     }));
   return {
     slotsUsed: partySlotsUsed(state.companions),
